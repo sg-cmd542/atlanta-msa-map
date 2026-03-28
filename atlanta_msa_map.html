@@ -468,6 +468,22 @@
     background: rgba(255, 255, 255, 0.02);
   }
 
+  /* ── HOODMAPS / SOCIAL MEDIA LABELS ── */
+  .hoodmaps-label { background: none !important; border: none !important; box-shadow: none !important; }
+  .hoodmaps-tip {
+    background: rgba(10,22,40,0.88) !important; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.12) !important; border-radius: 6px !important;
+    color: #fff !important; font-family: 'IBM Plex Sans', sans-serif !important;
+    padding: 4px 10px !important; box-shadow: 0 4px 16px rgba(0,0,0,0.4) !important;
+    white-space: nowrap !important; pointer-events: none !important;
+  }
+  .hoodmaps-tip::before { display: none !important; }
+  .hoodmaps-tip-s14 { font-size: 14px !important; }
+  .hoodmaps-tip-s12 { font-size: 12px !important; }
+  .hoodmaps-tip-s11 { font-size: 11px !important; }
+  .hoodmaps-tip-w700 { font-weight: 700 !important; }
+  .hoodmaps-tip-w500 { font-weight: 500 !important; }
+
   /* ── COSTAR CIRCLES ── */
   .leaflet-interactive {
     cursor: pointer !important;
@@ -701,7 +717,16 @@
       <div class="ov-section-title">Community Maps</div>
       <div class="ov-item" id="ov-hoodmaps">
         <div class="ov-check">✓</div>
-        <span>Hoodmaps</span>
+        <span>Social Media</span>
+      </div>
+    </div>
+    <div id="hoodmaps-legend" style="display:none;padding:8px 14px 4px">
+      <div style="display:flex;flex-wrap:wrap;gap:6px 12px;font-size:11px;color:var(--text-dim)">
+        <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#fbbf24;margin-right:4px;vertical-align:middle"></span>Rich</span>
+        <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#a3e635;margin-right:4px;vertical-align:middle"></span>Normies</span>
+        <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#818cf8;margin-right:4px;vertical-align:middle"></span>Hipsters</span>
+        <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#38bdf8;margin-right:4px;vertical-align:middle"></span>Tourists</span>
+        <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#f472b6;margin-right:4px;vertical-align:middle"></span>Uni</span>
       </div>
     </div>
     <div class="ov-opacity" id="overlay-opacity" style="display:block;">
@@ -2974,15 +2999,15 @@
 
       hoodmapsLabels = L.layerGroup();
       tags.forEach(function(t) {
-        var size = t.votes > 80 ? 16 : t.votes > 40 ? 13 : 11;
+        var size = t.votes > 80 ? 14 : t.votes > 40 ? 12 : 11;
         var weight = t.votes > 60 ? 700 : 500;
-        var icon = L.divIcon({
-          className: "hoodmaps-label",
-          html: '<div style="font-family:IBM Plex Sans,sans-serif;font-size:'+size+'px;font-weight:'+weight+';color:#fff;text-shadow:0 1px 4px rgba(0,0,0,0.85),0 0 2px rgba(0,0,0,0.9);white-space:nowrap;pointer-events:none;transform:translate(-50%,-50%)">' + t.tag.replace(/</g,"&lt;") + '</div>',
-          iconSize: [0,0],
-          iconAnchor: [0,0]
+        var m = L.circleMarker([t.latitude, t.longitude], {radius: 0, opacity: 0, fillOpacity: 0, interactive: false});
+        m.addTo(hoodmapsLabels);
+        m.bindTooltip(t.tag.replace(/</g,"&lt;"), {
+          permanent: true,
+          direction: "center",
+          className: "hoodmaps-tip hoodmaps-tip-s" + size + " hoodmaps-tip-w" + weight
         });
-        L.marker([t.latitude, t.longitude], {icon: icon, interactive: false}).addTo(hoodmapsLabels);
       });
       hoodmapsLabels.addTo(map);
     });
@@ -2998,6 +3023,7 @@
     if (hoodmapsActive) showHoodmaps();
     else hideHoodmaps();
     this.classList.toggle("active");
+    document.getElementById("hoodmaps-legend").style.display = hoodmapsActive ? "block" : "none";
   });
 
   // Legend toggle
@@ -3031,8 +3057,8 @@
     }
     if (hoodmapsLabels) {
       hoodmapsLabels.eachLayer(function(m) {
-        var el = m.getElement();
-        if (el) el.style.opacity = val;
+        var tip = m.getTooltip();
+        if (tip && tip.getElement()) tip.getElement().style.opacity = val;
       });
     }
   });
