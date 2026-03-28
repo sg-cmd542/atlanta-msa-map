@@ -696,6 +696,14 @@
         <span>Submarket Boundaries</span>
       </div>
     </div>
+    <div class="ov-divider"></div>
+    <div class="ov-section">
+      <div class="ov-section-title">Community Maps</div>
+      <div class="ov-item" id="ov-hoodmaps">
+        <div class="ov-check">✓</div>
+        <span>Hoodmaps</span>
+      </div>
+    </div>
     <div class="ov-opacity" id="overlay-opacity" style="display:block;">
       <label>Overlay Opacity</label>
       <input type="range" id="overlay-opacity-slider" min="10" max="100" value="65" />
@@ -2911,6 +2919,87 @@
   });
   document.getElementById("ov-costar").classList.add("active");
 
+  // Hoodmaps overlay
+  var hoodmapsLayer = null;
+  var hoodmapsLabels = null;
+  var hoodmapsActive = false;
+  var hoodmapsCategoryColors = {
+    rich: "#fbbf24",
+    normies: "#a3e635",
+    hipsters: "#818cf8",
+    tourists: "#38bdf8",
+    uni: "#f472b6"
+  };
+
+  function loadHoodmaps(cb) {
+    if (window._hoodmapsGeoJSON) { cb(window._hoodmapsGeoJSON, window._hoodmapsTags); return; }
+    Promise.all([
+      fetch("https://hoodmaps.com/assets/districts_categorized/atlanta.geojson").then(function(r){return r.json();}),
+      fetch("https://hoodmaps.com/?action=get_data&slug=atlanta").then(function(r){return r.json();})
+    ]).then(function(results) {
+      window._hoodmapsGeoJSON = results[0];
+      window._hoodmapsTags = results[1].tags.filter(function(t){return t.votes >= 15;}).sort(function(a,b){return b.votes - a.votes;}).slice(0,60);
+      cb(window._hoodmapsGeoJSON, window._hoodmapsTags);
+    }).catch(function(err) {
+      console.warn("Hoodmaps fetch failed:", err);
+    });
+  }
+
+  function showHoodmaps() {
+    loadHoodmaps(function(geo, tags) {
+      hoodmapsLayer = L.geoJSON(geo, {
+        style: function(feature) {
+          var cat = feature.properties.category || "normies";
+          return {
+            fillColor: hoodmapsCategoryColors[cat] || "#94a3b8",
+            fillOpacity: overlayOpacity * 0.45,
+            color: hoodmapsCategoryColors[cat] || "#94a3b8",
+            weight: 1.5,
+            opacity: overlayOpacity * 0.7
+          };
+        },
+        onEachFeature: function(feature, layer) {
+          var cat = feature.properties.category || "normies";
+          var catLabel = cat.charAt(0).toUpperCase() + cat.slice(1);
+          layer.bindPopup(
+            '<div style="font-family:IBM Plex Sans,sans-serif;padding:4px">' +
+            '<strong>' + feature.properties.name + '</strong><br>' +
+            '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + (hoodmapsCategoryColors[cat]||'#94a3b8') + ';margin-right:6px"></span>' +
+            catLabel +
+            '</div>'
+          );
+        }
+      }).addTo(map);
+      hoodmapsLayer.bringToFront();
+
+      hoodmapsLabels = L.layerGroup();
+      tags.forEach(function(t) {
+        var size = t.votes > 80 ? 16 : t.votes > 40 ? 13 : 11;
+        var weight = t.votes > 60 ? 700 : 500;
+        var icon = L.divIcon({
+          className: "hoodmaps-label",
+          html: '<div style="font-family:IBM Plex Sans,sans-serif;font-size:'+size+'px;font-weight:'+weight+';color:#fff;text-shadow:0 1px 4px rgba(0,0,0,0.85),0 0 2px rgba(0,0,0,0.9);white-space:nowrap;pointer-events:none;transform:translate(-50%,-50%)">' + t.tag.replace(/</g,"&lt;") + '</div>',
+          iconSize: [0,0],
+          iconAnchor: [0,0]
+        });
+        L.marker([t.latitude, t.longitude], {icon: icon, interactive: false}).addTo(hoodmapsLabels);
+      });
+      hoodmapsLabels.addTo(map);
+    });
+  }
+
+  function hideHoodmaps() {
+    if (hoodmapsLayer) { map.removeLayer(hoodmapsLayer); hoodmapsLayer = null; }
+    if (hoodmapsLabels) { map.removeLayer(hoodmapsLabels); hoodmapsLabels = null; }
+  }
+
+  document.getElementById("ov-hoodmaps").addEventListener("click", function() {
+    hoodmapsActive = !hoodmapsActive;
+    if (hoodmapsActive) showHoodmaps();
+    else hideHoodmaps();
+    this.classList.toggle("active");
+  });
+
   // Legend toggle
   document.getElementById("legend-toggle").addEventListener("click", function() {
     document.getElementById("legend-box").classList.toggle("open");
@@ -2934,6 +3023,18 @@
     Object.keys(costarPolygons).forEach(function(name) {
       costarPolygons[name].setStyle({ opacity: val * 0.7, fillOpacity: val * 0.08 });
     });
+    if (hoodmapsLayer) {
+      hoodmapsLayer.eachLayer(function(layer) {
+        var cat = layer.feature.properties.category || "normies";
+        layer.setStyle({ fillOpacity: val * 0.45, opacity: val * 0.7 });
+      });
+    }
+    if (hoodmapsLabels) {
+      hoodmapsLabels.eachLayer(function(m) {
+        var el = m.getElement();
+        if (el) el.style.opacity = val;
+      });
+    }
   });
 
   /* ── INFO PANEL ── */
