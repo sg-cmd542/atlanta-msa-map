@@ -2142,7 +2142,7 @@
   var poiCatIdCounter = 0;
   var poiCategories = [];
   var poiAddingToCat = null; // which category we're adding a point to
-  var POI_DATA_VERSION = 4; // bump this when default POI data changes
+  var POI_DATA_VERSION = 5; // bump this when default POI data changes
 
   function initDefaultPOI() {
     var cats = [
@@ -2194,17 +2194,17 @@
         {name: "Wellstar Cobb Medical Center", lat: 33.8920, lng: -84.5360, address: "3950 Austell Rd, Austell, GA 30106"}
       ]},
       { name: "Universities & Colleges", icon: "🎓", color: "#3b82f6", points: [
-        {name: "Georgia Tech", lat: 33.7756, lng: -84.3963, address: "North Ave NW, Atlanta, GA 30332"},
-        {name: "Emory University", lat: 33.7908, lng: -84.3235, address: "201 Dowman Dr, Atlanta, GA 30322"},
-        {name: "Georgia State University", lat: 33.7530, lng: -84.3860, address: "33 Gilmer St SE, Atlanta, GA 30303"},
-        {name: "Kennesaw State University", lat: 33.9418, lng: -84.5201, address: "1000 Chastain Rd NW, Kennesaw, GA 30144"},
-        {name: "Georgia Gwinnett College", lat: 33.9810, lng: -83.9860, address: "1000 University Center Ln, Lawrenceville, GA 30043"},
-        {name: "Gwinnett Technical College", lat: 33.9710, lng: -84.0010, address: "5150 Sugarloaf Pkwy, Lawrenceville, GA 30043"},
-        {name: "UGA Gwinnett Campus", lat: 33.9590, lng: -83.9460, address: "2530 Sever Rd, Lawrenceville, GA 30043"},
-        {name: "Morehouse College", lat: 33.7477, lng: -84.4130, address: "830 Westview Dr SW, Atlanta, GA 30314"},
-        {name: "Spelman College", lat: 33.7455, lng: -84.4127, address: "350 Spelman Ln SW, Atlanta, GA 30314"},
-        {name: "Clark Atlanta University", lat: 33.7520, lng: -84.4120, address: "223 James P. Brawley Dr SW, Atlanta, GA 30314"},
-        {name: "Oglethorpe University", lat: 33.8262, lng: -84.3347, address: "4484 Peachtree Rd NE, Atlanta, GA 30319"}
+        {name: "Georgia Tech", lat: 33.7756, lng: -84.3963, address: "North Ave NW, Atlanta, GA 30332", fields: [{label:"US News Rank", value:"#32 National Universities"},{label:"Acceptance Rate", value:"13%"}]},
+        {name: "Emory University", lat: 33.7908, lng: -84.3235, address: "201 Dowman Dr, Atlanta, GA 30322", fields: [{label:"US News Rank", value:"#24 National Universities"},{label:"Acceptance Rate", value:"11%"}]},
+        {name: "Georgia State University", lat: 33.7530, lng: -84.3860, address: "33 Gilmer St SE, Atlanta, GA 30303", fields: [{label:"US News Rank", value:"#198 National Universities"},{label:"Acceptance Rate", value:"52%"}]},
+        {name: "Kennesaw State University", lat: 33.9418, lng: -84.5201, address: "1000 Chastain Rd NW, Kennesaw, GA 30144", fields: [{label:"US News Rank", value:"#373 National Universities"},{label:"Acceptance Rate", value:"82%"}]},
+        {name: "Georgia Gwinnett College", lat: 33.9810, lng: -83.9860, address: "1000 University Center Ln, Lawrenceville, GA 30043", fields: [{label:"US News Rank", value:"#54 Regional Colleges South"},{label:"Acceptance Rate", value:"95%"}]},
+        {name: "Gwinnett Technical College", lat: 33.9710, lng: -84.0010, address: "5150 Sugarloaf Pkwy, Lawrenceville, GA 30043", fields: [{label:"US News Rank", value:"N/A (Technical College)"},{label:"Acceptance Rate", value:"100% (Open Admissions)"}]},
+        {name: "UGA Gwinnett Campus", lat: 33.9590, lng: -83.9460, address: "2530 Sever Rd, Lawrenceville, GA 30043", fields: [{label:"US News Rank", value:"#46 National Universities (UGA)"},{label:"Acceptance Rate", value:"35%"}]},
+        {name: "Morehouse College", lat: 33.7477, lng: -84.4130, address: "830 Westview Dr SW, Atlanta, GA 30314", fields: [{label:"US News Rank", value:"#96 Natl Liberal Arts / #3 HBCU"},{label:"Acceptance Rate", value:"33%"}]},
+        {name: "Spelman College", lat: 33.7455, lng: -84.4127, address: "350 Spelman Ln SW, Atlanta, GA 30314", fields: [{label:"US News Rank", value:"#37 Natl Liberal Arts / #1 HBCU"},{label:"Acceptance Rate", value:"25%"}]},
+        {name: "Clark Atlanta University", lat: 33.7520, lng: -84.4120, address: "223 James P. Brawley Dr SW, Atlanta, GA 30314", fields: [{label:"US News Rank", value:"#329 National Universities"},{label:"Acceptance Rate", value:"64%"}]},
+        {name: "Oglethorpe University", lat: 33.8262, lng: -84.3347, address: "4484 Peachtree Rd NE, Atlanta, GA 30319", fields: [{label:"US News Rank", value:"#156 Natl Liberal Arts Colleges"},{label:"Acceptance Rate", value:"89%"}]}
       ]},
       { name: "Schools (K-12)", icon: "🏫", color: "#f97316", points: [
         {name: "Innovation Academy (STEM Magnet)", lat: 34.0340, lng: -84.2810, address: "3045 Kimball Bridge Rd, Alpharetta, GA 30022", fields: [{label:"Niche Grade", value:"A"}]},
