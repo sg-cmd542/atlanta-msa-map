@@ -1,0 +1,3567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Atlanta MSA — Market Research Map</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --navy: #0a1628; --navy-light: #132038; --accent: #3b9eff;
+    --green: #34d399; --amber: #fbbf24; --orange: #fb923c;
+    --purple: #a78bfa; --teal: #2dd4bf; --text: #e2e8f0;
+    --text-dim: #94a3b8; --border: rgba(255,255,255,0.08);
+    --glass: rgba(10,22,40,0.88);
+  }
+  body { font-family: 'IBM Plex Sans', sans-serif; background: var(--navy); color: var(--text); height: 100vh; overflow: hidden; }
+
+  #header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 1000; height: 56px;
+    background: var(--glass); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border); display: flex; align-items: center;
+    justify-content: space-between; padding: 0 24px;
+  }
+  #header .logo { display: flex; align-items: center; gap: 12px; }
+  #header .logo-icon {
+    width: 32px; height: 32px; background: linear-gradient(135deg, var(--accent), #6366f1);
+    border-radius: 8px; display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 14px; color: #fff;
+  }
+  #header h1 { font-size: 15px; font-weight: 600; color: #fff; }
+  #header h1 span { color: var(--text-dim); font-weight: 400; }
+  #header .controls { display: flex; gap: 8px; align-items: center; }
+  .btn {
+    font-family: 'IBM Plex Sans', sans-serif; font-size: 12px; font-weight: 500;
+    padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--navy-light); color: var(--text); cursor: pointer; transition: all 0.15s;
+  }
+  .btn:hover { border-color: var(--accent); color: #fff; }
+  .btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  #map { position: fixed; top: 56px; left: 0; right: 0; bottom: 0; z-index: 1; }
+
+  #sidebar {
+    position: fixed; top: 56px; left: 0; bottom: 0; width: 340px;
+    background: var(--glass); backdrop-filter: blur(20px); border-right: 1px solid var(--border);
+    z-index: 900; display: flex; flex-direction: column; transition: transform 0.3s ease;
+  }
+  #sidebar.collapsed { transform: translateX(-340px); }
+  .sidebar-hdr { padding: 12px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .sidebar-hdr h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); }
+  .sidebar-tabs { display: flex; gap: 4px; }
+  .stab {
+    font-family: 'IBM Plex Sans', sans-serif; font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.06em; padding: 6px 12px;
+    border-radius: 6px; border: 1px solid transparent; background: none;
+    color: var(--text-dim); cursor: pointer; transition: all 0.15s;
+  }
+  .stab:hover { color: #fff; }
+  .stab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .tab-content { display: none; flex: 1; overflow: hidden; flex-direction: column; }
+  .tab-content.active { display: flex; }
+
+  /* ── SAVED LAYERS ── */
+  .saved-layers { flex: 1; overflow-y: auto; padding: 8px 0; }
+  .saved-layer {
+    border-bottom: 1px solid var(--border); padding: 0;
+  }
+  .saved-layer-hdr {
+    display: flex; align-items: center; gap: 8px; padding: 10px 20px;
+    cursor: pointer; transition: background 0.12s;
+  }
+  .saved-layer-hdr:hover { background: rgba(255,255,255,0.04); }
+  .layer-expand { font-size: 10px; color: var(--text-dim); transition: transform 0.2s; width: 12px; text-align: center; }
+  .saved-layer.open .layer-expand { transform: rotate(90deg); }
+  .layer-color-dot {
+    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.2);
+  }
+  .layer-name {
+    flex: 1; font-size: 13px; font-weight: 500; color: var(--text);
+    background: none; border: none; outline: none; font-family: 'IBM Plex Sans', sans-serif;
+    cursor: default; min-width: 0; padding: 0;
+  }
+  .layer-name:focus { cursor: text; border-bottom: 1px solid var(--accent); color: #fff; }
+  .layer-name::selection { background: rgba(59,158,255,0.3); }
+  .layer-count { font-size: 11px; color: var(--text-dim); margin-right: 4px; }
+  .layer-vis {
+    width: 22px; height: 22px; border-radius: 4px; border: 1px solid var(--border);
+    background: none; color: var(--text-dim); cursor: pointer; font-size: 12px;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .layer-vis:hover { color: #fff; border-color: var(--accent); }
+  .layer-vis.on { color: var(--accent); border-color: var(--accent); }
+  .layer-del {
+    width: 22px; height: 22px; border-radius: 4px; border: 1px solid var(--border);
+    background: none; color: var(--text-dim); cursor: pointer; font-size: 12px;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .layer-del:hover { color: #fb7185; border-color: #fb7185; }
+  .layer-places { display: none; padding: 0 20px 8px 42px; }
+  .saved-layer.open .layer-places { display: block; }
+  .saved-place {
+    display: flex; align-items: center; gap: 8px; padding: 5px 0;
+    font-size: 12px; color: var(--text); cursor: pointer; transition: color 0.12s;
+  }
+  .saved-place:hover { color: var(--accent); }
+  .saved-place .sp-remove {
+    margin-left: auto; font-size: 11px; color: var(--text-dim); cursor: pointer;
+    opacity: 0; transition: opacity 0.15s;
+  }
+  .saved-place:hover .sp-remove { opacity: 1; }
+  .saved-place .sp-remove:hover { color: #fb7185; }
+  .saved-place .sp-name { cursor: pointer; flex: 1; }
+  .saved-place .sp-icon { flex-shrink: 0; }
+  .saved-place .sp-info {
+    font-size: 11px; color: var(--text-dim); cursor: pointer; opacity: 0; transition: opacity 0.15s;
+    margin-right: 2px; flex-shrink: 0;
+  }
+  .saved-place:hover .sp-info { opacity: 1; }
+  .saved-place .sp-info:hover { color: var(--accent); }
+
+  /* Fields modal */
+  .fields-modal-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.55);
+    z-index: 2000; display: flex; align-items: center; justify-content: center;
+  }
+  .fields-modal {
+    background: var(--navy); border: 1px solid var(--border); border-radius: 12px;
+    padding: 20px 24px; min-width: 340px; max-width: 420px; max-height: 80vh; overflow-y: auto;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+  }
+  .fields-modal h3 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .fields-modal .fm-addr { font-size: 11px; color: var(--text-dim); margin-bottom: 14px; }
+  .fields-modal .fm-row {
+    display: flex; gap: 8px; align-items: center; margin-bottom: 8px;
+  }
+  .fields-modal .fm-row input {
+    font-family: 'IBM Plex Sans', sans-serif; font-size: 12px; padding: 6px 10px;
+    border-radius: 6px; border: 1px solid var(--border); background: var(--navy-light);
+    color: var(--text); outline: none; transition: border-color 0.15s;
+  }
+  .fields-modal .fm-row input:focus { border-color: var(--accent); }
+  .fields-modal .fm-row .fm-label { width: 110px; flex-shrink: 0; }
+  .fields-modal .fm-row .fm-value { flex: 1; }
+  .fields-modal .fm-row .fm-del {
+    font-size: 14px; color: var(--text-dim); cursor: pointer; flex-shrink: 0; padding: 2px 4px;
+  }
+  .fields-modal .fm-row .fm-del:hover { color: #fb7185; }
+  .fields-modal .fm-actions { display: flex; gap: 8px; margin-top: 14px; }
+  .fields-modal .fm-actions .btn { flex: 1; text-align: center; font-size: 12px; padding: 8px 0; }
+  .saved-actions { padding: 12px 20px; border-top: 1px solid var(--border); }
+  .saved-btn { width: 100%; text-align: center; font-size: 12px; padding: 8px 0; }
+
+  /* ── POI CATEGORIES ── */
+  .poi-categories { flex: 1; overflow-y: auto; padding: 8px 0; }
+  .poi-cat { border-bottom: 1px solid var(--border); }
+  .poi-cat-hdr {
+    display: flex; align-items: center; gap: 8px; padding: 10px 20px;
+    cursor: pointer; transition: background 0.12s;
+  }
+  .poi-cat-hdr:hover { background: rgba(255,255,255,0.04); }
+  .poi-cat.open .layer-expand { transform: rotate(90deg); }
+  .poi-cat-icon {
+    width: 24px; height: 24px; border-radius: 6px; display: flex; align-items: center;
+    justify-content: center; font-size: 13px; flex-shrink: 0; cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.15);
+  }
+  .poi-cat-name {
+    flex: 1; font-size: 13px; font-weight: 500; color: var(--text);
+    background: none; border: none; outline: none; font-family: 'IBM Plex Sans', sans-serif;
+    cursor: default; min-width: 0; padding: 0;
+  }
+  .poi-cat-name:focus { cursor: text; border-bottom: 1px solid var(--accent); color: #fff; }
+  .poi-cat-add {
+    width: 22px; height: 22px; border-radius: 4px; border: 1px solid var(--border);
+    background: none; color: var(--accent); cursor: pointer; font-size: 14px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .poi-cat-add:hover { background: rgba(59,158,255,0.1); border-color: var(--accent); }
+  .poi-points { display: none; padding: 0 20px 8px 42px; }
+  .poi-cat.open .poi-points { display: block; }
+  .poi-point {
+    display: flex; align-items: center; gap: 8px; padding: 5px 0;
+    font-size: 12px; color: var(--text); cursor: pointer; transition: color 0.12s;
+  }
+  .poi-point:hover { color: var(--accent); }
+  .poi-point .sp-remove { margin-left: auto; font-size: 11px; color: var(--text-dim); cursor: pointer; opacity: 0; transition: opacity 0.15s; }
+  .poi-point:hover .sp-remove { opacity: 1; }
+  .poi-point .sp-remove:hover { color: #fb7185; }
+
+  /* Icon/color picker popover */
+  .poi-picker {
+    position: absolute; left: 20px; right: 20px; background: var(--navy);
+    border: 1px solid var(--border); border-radius: 8px; z-index: 960;
+    padding: 12px; display: none;
+  }
+  .poi-picker.show { display: block; }
+  .poi-picker-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); margin-bottom: 6px; }
+  .poi-picker-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .poi-picker-swatch {
+    width: 22px; height: 22px; border-radius: 4px; cursor: pointer;
+    border: 2px solid transparent; transition: border-color 0.12s;
+  }
+  .poi-picker-swatch:hover, .poi-picker-swatch.sel { border-color: #fff; }
+  .poi-picker-icon {
+    width: 28px; height: 28px; border-radius: 6px; cursor: pointer;
+    border: 2px solid transparent; display: flex; align-items: center; justify-content: center;
+    font-size: 15px; background: var(--navy-light); transition: border-color 0.12s;
+  }
+  .poi-picker-icon:hover, .poi-picker-icon.sel { border-color: var(--accent); }
+
+  /* Geo search results dropdown */
+  .geo-results {
+    position: absolute; left: 20px; right: 20px; background: var(--navy);
+    border: 1px solid var(--border); border-radius: 0 0 6px 6px; z-index: 950;
+    max-height: 200px; overflow-y: auto; display: none;
+  }
+  .geo-result-item {
+    padding: 8px 12px; font-size: 12px; color: var(--text); cursor: pointer;
+    border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px;
+  }
+  .geo-result-item:last-child { border-bottom: none; }
+  .geo-result-item:hover { background: rgba(59,158,255,0.1); }
+  .geo-result-item .gr-name { font-weight: 500; }
+  .geo-result-item .gr-addr { font-size: 11px; color: var(--text-dim); margin-top: 1px; }
+  .geo-result-item .gr-save { margin-left: auto; color: var(--accent); font-size: 11px; font-weight: 600; flex-shrink: 0; }
+  .tbtn {
+    width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--navy-light); color: var(--text-dim); cursor: pointer; font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .tbtn:hover { color: #fff; border-color: var(--accent); }
+
+  .sidebar-search { padding: 12px 20px; border-bottom: 1px solid var(--border); }
+  .sidebar-search input {
+    width: 100%; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--navy); color: var(--text); font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 13px; outline: none;
+  }
+  .sidebar-search input::placeholder { color: var(--text-dim); }
+  .sidebar-search input:focus { border-color: var(--accent); }
+
+  .sm-list { flex: 1; overflow-y: auto; padding: 8px 0; }
+  .sm-list::-webkit-scrollbar { width: 4px; }
+  .sm-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+  .sm-group { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); padding: 12px 20px 6px; }
+  .sm-item {
+    padding: 10px 20px; cursor: pointer; display: flex; align-items: center; gap: 10px;
+    transition: background 0.12s; border-left: 3px solid transparent;
+  }
+  .sm-item:hover { background: rgba(255,255,255,0.04); }
+  .sm-item.active { background: rgba(59,158,255,0.08); border-left-color: var(--accent); }
+  .sm-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .sm-info { flex: 1; min-width: 0; }
+  .sm-name { font-size: 13px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sm-county { font-size: 11px; color: var(--text-dim); margin-top: 1px; }
+
+  /* Sidebar collapse tab — sits on the right edge of the sidebar */
+  #sidebar-collapse-tab {
+    position: absolute; top: 50%; right: -16px; transform: translateY(-50%);
+    width: 16px; height: 48px; background: var(--glass); backdrop-filter: blur(12px);
+    border: 1px solid var(--border); border-left: none;
+    border-radius: 0 8px 8px 0; cursor: pointer; z-index: 901;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-dim); font-size: 11px; transition: all 0.2s;
+  }
+  #sidebar-collapse-tab:hover { color: #fff; background: rgba(59,158,255,0.12); border-color: var(--accent); }
+  #sidebar-collapse-tab .arrow { transition: transform 0.3s; }
+  #sidebar.collapsed #sidebar-collapse-tab { opacity: 0; pointer-events: none; }
+
+  /* When sidebar is collapsed, move the tab to the left edge of viewport */
+  #sidebar-open {
+    position: fixed; top: 50%; left: 0; transform: translateY(-50%);
+    width: 16px; height: 48px; background: var(--glass); backdrop-filter: blur(12px);
+    border: 1px solid var(--border); border-left: none;
+    border-radius: 0 8px 8px 0; cursor: pointer; z-index: 899;
+    display: none; align-items: center; justify-content: center;
+    color: var(--text-dim); font-size: 11px; transition: all 0.2s;
+  }
+  #sidebar-open:hover { color: #fff; background: rgba(59,158,255,0.12); border-color: var(--accent); }
+  #sidebar.collapsed ~ #sidebar-open { display: flex; }
+
+  /* ── OVERLAY CONTROL PANEL ── */
+  #overlay-panel {
+    position: fixed; top: 68px; right: 60px; z-index: 900;
+    background: var(--glass); backdrop-filter: blur(16px); border: 1px solid var(--border);
+    border-radius: 10px; padding: 0; min-width: 220px; max-width: 260px;
+    transition: all 0.25s ease; overflow: hidden;
+  }
+  #overlay-panel.collapsed { max-height: 42px; }
+  .ov-header {
+    padding: 10px 16px; display: flex; justify-content: space-between; align-items: center;
+    cursor: pointer; border-bottom: 1px solid var(--border);
+  }
+  .ov-header h3 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); }
+  .ov-header .ov-toggle { font-size: 12px; color: var(--text-dim); transition: transform 0.2s; }
+  #overlay-panel.collapsed .ov-header .ov-toggle { transform: rotate(180deg); }
+  #overlay-panel.collapsed .ov-header { border-bottom: none; }
+  .ov-body { padding: 8px 0; }
+  .ov-section { padding: 4px 16px 8px; }
+  .ov-section-title { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); margin-bottom: 6px; }
+  .ov-item {
+    display: flex; align-items: center; gap: 8px; padding: 5px 0; cursor: pointer;
+    font-size: 12px; color: var(--text); transition: color 0.12s;
+  }
+  .ov-item:hover { color: #fff; }
+  .ov-item.active { color: #fff; }
+  .ov-check {
+    width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--border);
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    font-size: 10px; transition: all 0.15s;
+  }
+  .ov-item.active .ov-check { background: var(--accent); border-color: var(--accent); }
+  .ov-divider { height: 1px; background: var(--border); margin: 4px 16px; }
+
+  /* ── OPACITY SLIDER ── */
+  .ov-opacity { padding: 6px 16px 12px; display: none; }
+  .ov-opacity.show { display: block; }
+  .ov-opacity label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); display: block; margin-bottom: 6px; }
+  .ov-opacity input[type="range"] {
+    width: 100%; height: 4px; -webkit-appearance: none; appearance: none;
+    background: var(--border); border-radius: 2px; outline: none;
+  }
+  .ov-opacity input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 14px; height: 14px;
+    border-radius: 50%; background: var(--accent); cursor: pointer; border: 2px solid #fff;
+  }
+  .ov-opacity-val { font-size: 11px; color: var(--text-dim); text-align: right; margin-top: 2px; font-family: 'IBM Plex Mono', monospace; }
+
+  /* ── DYNAMIC LEGEND ── */
+  #legend-toggle {
+    position: fixed; bottom: 20px; right: 20px; z-index: 900;
+    background: var(--glass); backdrop-filter: blur(16px); border: 1px solid var(--border);
+    border-radius: 8px; padding: 7px 14px; cursor: pointer;
+    font-family: 'IBM Plex Sans', sans-serif; font-size: 11px; font-weight: 600;
+    color: var(--text-dim); display: flex; align-items: center; gap: 6px;
+    transition: all 0.2s;
+  }
+  #legend-toggle:hover { color: #fff; border-color: var(--accent); }
+  #legend-toggle .lt-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+  #legend-box {
+    position: fixed; bottom: 56px; right: 20px; z-index: 900;
+    background: var(--glass); backdrop-filter: blur(16px); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 18px; min-width: 180px;
+    transition: all 0.2s ease; display: none;
+  }
+  #legend-box.open { display: block; }
+  #legend-box h3 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); margin-bottom: 10px; }
+  .leg-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text); margin-bottom: 6px; }
+  .leg-item:last-child { margin-bottom: 0; }
+  .leg-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+  /* ── INFO PANEL / SIDEBAR RIGHT ── */
+  #info-panel {
+    position: fixed; top: 56px; right: 0; bottom: 0; width: 420px;
+    background: var(--glass); backdrop-filter: blur(20px); border-left: 1px solid var(--border);
+    z-index: 899; transform: translateX(420px); transition: transform 0.3s ease;
+  }
+  #info-panel.open { transform: translateX(0); }
+  #panel-header {
+    padding: 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: flex-start;
+  }
+  #panel-title { flex: 1; }
+  #panel-name { font-size: 16px; font-weight: 600; color: #fff; margin-bottom: 4px; }
+  #panel-sub { font-size: 12px; color: var(--text-dim); }
+  #btn-close-panel {
+    width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--navy-light); color: var(--text-dim); cursor: pointer; font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #btn-close-panel:hover { color: #fff; border-color: var(--accent); }
+
+  #panel-body {
+    flex: 1; overflow-y: auto; padding: 0;
+  }
+  #panel-body::-webkit-scrollbar { width: 4px; }
+  #panel-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+
+  .dsec { padding: 20px; border-bottom: 1px solid var(--border); }
+  .dsec h3 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); margin-bottom: 12px; }
+  .drow {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .drow:last-child { border-bottom: none; }
+  .dl { font-size: 12px; color: var(--text-dim); font-weight: 500; }
+  .dv { font-size: 12px; color: #fff; font-family: 'IBM Plex Mono', monospace; font-weight: 500; }
+  .tag {
+    display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 600;
+    margin-right: 4px; margin-top: 4px;
+  }
+  .tag-blue { background: rgba(59,158,255,0.15); color: var(--accent); border: 1px solid rgba(59,158,255,0.3); }
+  .tag-green { background: rgba(52,211,153,0.15); color: var(--green); border: 1px solid rgba(52,211,153,0.3); }
+  .pnote { font-size: 11px; color: var(--text-dim); margin-top: 8px; font-style: italic; }
+
+  /* ── COSTAR POPUP ── */
+  .leaflet-popup-content-wrapper {
+    background: rgba(10, 22, 40, 0.95) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3) !important;
+  }
+  .leaflet-popup-tip {
+    background: rgba(10, 22, 40, 0.95) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+  }
+  .costar-popup {
+    font-family: 'IBM Plex Sans', sans-serif;
+    color: #e2e8f0;
+    width: 360px;
+  }
+  .costar-popup h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+    margin: 0 0 12px 0;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .costar-section {
+    margin-bottom: 12px;
+  }
+  .costar-section:last-child {
+    margin-bottom: 0;
+  }
+  .costar-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  .costar-value {
+    font-size: 13px;
+    color: #fff;
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 500;
+  }
+  .costar-subvalue {
+    font-size: 11px;
+    color: #94a3b8;
+    margin-top: 2px;
+  }
+  .rent-table {
+    width: 100%;
+    font-size: 11px;
+    border-collapse: collapse;
+    margin-top: 4px;
+  }
+  .rent-table th {
+    text-align: left;
+    padding: 4px 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    font-weight: 600;
+    color: #3b9eff;
+    background: rgba(59, 158, 255, 0.05);
+  }
+  .rent-table td {
+    padding: 4px 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    color: #e2e8f0;
+  }
+  .rent-table tr:hover {
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  /* ── COSTAR CIRCLES ── */
+  .leaflet-interactive {
+    cursor: pointer !important;
+  }
+  .costar-tooltip {
+    background: rgba(10,22,40,0.92) !important; backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.12) !important; border-radius: 6px !important;
+    color: #fff !important; font-family: 'IBM Plex Sans', sans-serif !important;
+    font-size: 12px !important; font-weight: 600 !important;
+    padding: 5px 10px !important; box-shadow: 0 4px 16px rgba(0,0,0,0.4) !important;
+  }
+  .costar-tooltip::before { border-top-color: rgba(10,22,40,0.92) !important; }
+
+  /* ── CUSTOM MARKER ── */
+  .cmarker {
+    border-radius: 50%;
+    border: 2px solid #fff;
+    transition: all 0.15s;
+  }
+  .cmarker.hl {
+    filter: brightness(1.3) drop-shadow(0 0 6px rgba(255,255,255,0.4));
+  }
+  @keyframes pulse-ring {
+    0% { transform: scale(1); opacity: 1; }
+    100% { transform: scale(2.2); opacity: 0; }
+  }
+
+  /* ── FILTER PANEL (right sidebar) ── */
+  #filter-panel {
+    position: fixed; top: 56px; right: 0; bottom: 0; width: 480px;
+    background: var(--glass); backdrop-filter: blur(20px); border-left: 1px solid var(--border);
+    z-index: 950; display: none; flex-direction: column; transition: transform 0.3s ease;
+  }
+  #filter-panel.active { display: flex; }
+  .fp-hdr {
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+  }
+  .fp-hdr h2 {
+    font-size: 14px; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 8px;
+  }
+  .fp-hdr h2 span { font-size: 11px; color: var(--text-dim); font-weight: 400; }
+  .fp-close {
+    font-family: 'IBM Plex Sans', sans-serif; font-size: 18px; background: none; border: none;
+    color: var(--text-dim); cursor: pointer; padding: 4px 8px; border-radius: 4px;
+  }
+  .fp-close:hover { color: #fff; background: rgba(255,255,255,0.06); }
+
+  /* Filter bar */
+  .fp-filters {
+    padding: 10px 16px; border-bottom: 1px solid var(--border); display: flex; gap: 8px;
+    flex-wrap: wrap; align-items: center; flex-shrink: 0;
+  }
+  .fp-filter-group { position: relative; }
+  .fp-filter-btn {
+    font-family: 'IBM Plex Sans', sans-serif; font-size: 11px; font-weight: 500;
+    padding: 5px 10px; border-radius: 5px; border: 1px solid var(--border);
+    background: var(--navy-light); color: var(--text-dim); cursor: pointer;
+    display: flex; align-items: center; gap: 4px; transition: all 0.15s;
+  }
+  .fp-filter-btn:hover { border-color: var(--accent); color: #fff; }
+  .fp-filter-btn.has-filter { border-color: var(--accent); color: var(--accent); background: rgba(59,158,255,0.08); }
+  .fp-filter-btn .fp-arrow { font-size: 8px; margin-left: 2px; }
+  .fp-dropdown {
+    display: none; position: absolute; top: 100%; left: 0; margin-top: 4px;
+    background: var(--navy-light); border: 1px solid var(--border); border-radius: 8px;
+    min-width: 200px; max-height: 280px; overflow-y: auto; z-index: 999;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5); padding: 4px 0;
+  }
+  .fp-dropdown.open { display: block; }
+  .fp-dd-item {
+    padding: 6px 12px; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 8px;
+    color: var(--text); transition: background 0.1s;
+  }
+  .fp-dd-item:hover { background: rgba(255,255,255,0.04); }
+  .fp-dd-check {
+    width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--border);
+    display: flex; align-items: center; justify-content: center; font-size: 10px;
+    flex-shrink: 0; color: transparent; transition: all 0.15s;
+  }
+  .fp-dd-item.selected .fp-dd-check { border-color: var(--accent); background: var(--accent); color: #fff; }
+  .fp-clear-btn {
+    font-family: 'IBM Plex Sans', sans-serif; font-size: 11px; font-weight: 500;
+    padding: 5px 10px; border-radius: 5px; border: 1px solid rgba(251,113,133,0.3);
+    background: rgba(251,113,133,0.08); color: #fb7185; cursor: pointer; margin-left: auto;
+  }
+  .fp-clear-btn:hover { background: rgba(251,113,133,0.15); }
+
+  /* Table */
+  .fp-table-wrap { flex: 1; overflow: auto; }
+  .fp-table {
+    width: 100%; border-collapse: collapse; font-size: 12px;
+  }
+  .fp-table thead { position: sticky; top: 0; z-index: 2; }
+  .fp-table th {
+    background: var(--navy-light); padding: 8px 12px; text-align: left; font-weight: 600;
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim);
+    border-bottom: 1px solid var(--border); cursor: pointer; user-select: none;
+    white-space: nowrap; position: relative;
+  }
+  .fp-table th:hover { color: #fff; }
+  .fp-table th .sort-icon { font-size: 9px; margin-left: 4px; opacity: 0.4; }
+  .fp-table th.sorted .sort-icon { opacity: 1; color: var(--accent); }
+  .fp-table td {
+    padding: 7px 12px; border-bottom: 1px solid var(--border); color: var(--text);
+    max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .fp-table tr { cursor: pointer; transition: background 0.1s; }
+  .fp-table tbody tr:hover { background: rgba(59,158,255,0.06); }
+  .fp-table tbody tr.fp-highlighted { background: rgba(59,158,255,0.12); }
+  .fp-table .fp-source-badge {
+    font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 500;
+    display: inline-block;
+  }
+  .fp-source-badge.poi { background: rgba(99,102,241,0.15); color: #a78bfa; }
+  .fp-source-badge.layer { background: rgba(52,211,153,0.15); color: #34d399; }
+  .fp-count {
+    padding: 8px 16px; border-top: 1px solid var(--border); font-size: 11px;
+    color: var(--text-dim); text-align: right; flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <div class="logo">
+    <div class="logo-icon">A</div>
+    <h1>Atlanta MSA <span>Research Map</span></h1>
+  </div>
+  <div class="controls">
+    <button class="btn" id="btn-filter" title="Filter view">Filter</button>
+    <button class="btn active" id="btn-satellite">Satellite</button>
+    <button class="btn" id="btn-street">Street</button>
+    <button class="btn" id="btn-dark">Dark</button>
+    <button class="btn" id="btn-transit">🚇 Transit</button>
+    <button class="btn" id="btn-reset">Reset View</button>
+  </div>
+</div>
+
+<div id="map"></div>
+
+<div id="sidebar">
+  <div class="sidebar-hdr">
+    <div class="sidebar-tabs">
+      <button class="stab active" id="tab-markets">Markets</button>
+      <button class="stab" id="tab-poi">POI</button>
+      <button class="stab" id="tab-saved">Saved</button>
+    </div>
+  </div>
+  <div class="sidebar-search" style="position:relative;">
+    <input type="text" id="search-input" placeholder="Search..." />
+    <div id="geo-results" class="geo-results"></div>
+  </div>
+  <div id="tab-markets-content" class="tab-content active">
+    <div id="sm-list" class="sm-list"></div>
+  </div>
+  <div id="tab-poi-content" class="tab-content" style="position:relative;">
+    <div id="poi-picker" class="poi-picker"></div>
+    <div id="poi-categories" class="poi-categories"></div>
+    <div class="saved-actions">
+      <button class="btn saved-btn" id="btn-add-category">+ New Category</button>
+    </div>
+  </div>
+  <div id="tab-saved-content" class="tab-content" style="position:relative;">
+    <div id="saved-picker" class="poi-picker"></div>
+    <div id="saved-layers" class="saved-layers"></div>
+    <div class="saved-actions">
+      <button class="btn saved-btn" id="btn-add-layer">+ New Layer</button>
+    </div>
+  </div>
+  <div id="sidebar-collapse-tab" title="Collapse sidebar"><span class="arrow">◂</span></div>
+</div>
+
+<button id="sidebar-open" title="Open sidebar"><span class="arrow">▸</span></button>
+
+<div id="overlay-panel" class="collapsed">
+  <div class="ov-header" id="ov-toggle-header">
+    <h3>Overlays</h3>
+    <span class="ov-toggle">∨</span>
+  </div>
+  <div class="ov-body">
+    <div class="ov-section">
+      <div class="ov-section-title">Census Overlays</div>
+      <div class="ov-item" data-layer="income">
+        <div class="ov-check">✓</div>
+        <span>Median Income</span>
+      </div>
+      <div class="ov-item" data-layer="black">
+        <div class="ov-check">✓</div>
+        <span>% Black</span>
+      </div>
+      <div class="ov-item" data-layer="white">
+        <div class="ov-check">✓</div>
+        <span>% White</span>
+      </div>
+      <div class="ov-item" data-layer="hispanic">
+        <div class="ov-check">✓</div>
+        <span>% Hispanic</span>
+      </div>
+      <div class="ov-item" data-layer="asian">
+        <div class="ov-check">✓</div>
+        <span>% Asian</span>
+      </div>
+      <div class="ov-item" data-layer="nonwhite">
+        <div class="ov-check">✓</div>
+        <span>% Non-White</span>
+      </div>
+      <div class="ov-item" data-layer="multi">
+        <div class="ov-check">✓</div>
+        <span>% Multi-Racial</span>
+      </div>
+      <div class="ov-item" data-layer="plural">
+        <div class="ov-check">✓</div>
+        <span>Plurality</span>
+      </div>
+      <div class="ov-item" data-layer="indian">
+        <div class="ov-check">✓</div>
+        <span>% American Indian</span>
+      </div>
+    </div>
+    <div class="ov-divider"></div>
+    <div class="ov-section">
+      <div class="ov-section-title">CoStar Markets</div>
+      <div class="ov-item" id="ov-costar">
+        <div class="ov-check">✓</div>
+        <span>Submarket Boundaries</span>
+      </div>
+    </div>
+    <div class="ov-opacity" id="overlay-opacity" style="display:block;">
+      <label>Overlay Opacity</label>
+      <input type="range" id="overlay-opacity-slider" min="10" max="100" value="65" />
+      <div class="ov-opacity-val"><span id="overlay-opacity-val">65</span>%</div>
+    </div>
+  </div>
+</div>
+
+<!-- FILTER PANEL (right sidebar) -->
+<div id="filter-panel">
+  <div class="fp-hdr">
+    <h2>Filter View <span id="fp-showing"></span></h2>
+    <button class="fp-close" id="fp-close" title="Close filter view">✕</button>
+  </div>
+  <div class="fp-filters">
+    <div class="fp-filter-group">
+      <button class="fp-filter-btn" id="fp-btn-source">Source <span class="fp-arrow">▾</span></button>
+      <div class="fp-dropdown" id="fp-dd-source"></div>
+    </div>
+    <div class="fp-filter-group">
+      <button class="fp-filter-btn" id="fp-btn-category">Category <span class="fp-arrow">▾</span></button>
+      <div class="fp-dropdown" id="fp-dd-category"></div>
+    </div>
+    <div class="fp-filter-group">
+      <button class="fp-filter-btn" id="fp-btn-submarket">Submarket <span class="fp-arrow">▾</span></button>
+      <div class="fp-dropdown" id="fp-dd-submarket"></div>
+    </div>
+    <button class="fp-clear-btn" id="fp-clear">Clear All</button>
+  </div>
+  <div class="fp-table-wrap">
+    <table class="fp-table">
+      <thead>
+        <tr id="fp-thead-row"></tr>
+      </thead>
+      <tbody id="fp-tbody"></tbody>
+    </table>
+  </div>
+  <div class="fp-count" id="fp-count"></div>
+</div>
+
+<div id="legend-toggle"><div class="lt-dot"></div> Legend</div>
+<div id="legend-box">
+  <h3>Submarket Types</h3>
+  <div class="leg-item">
+    <div class="leg-dot" style="background:#6366f1;"></div>
+    <span>Urban Core</span>
+  </div>
+  <div class="leg-item">
+    <div class="leg-dot" style="background:#a78bfa;"></div>
+    <span>Urban</span>
+  </div>
+  <div class="leg-item">
+    <div class="leg-dot" style="background:#34d399;"></div>
+    <span>Suburban — North</span>
+  </div>
+  <div class="leg-item">
+    <div class="leg-dot" style="background:#2dd4bf;"></div>
+    <span>Suburban — East</span>
+  </div>
+  <div class="leg-item">
+    <div class="leg-dot" style="background:#fbbf24;"></div>
+    <span>Suburban — West</span>
+  </div>
+  <div class="leg-item">
+    <div class="leg-dot" style="background:#fb923c;"></div>
+    <span>Suburban — South</span>
+  </div>
+</div>
+
+<div id="info-panel">
+  <div id="panel-header">
+    <div id="panel-title">
+      <div id="panel-name"></div>
+      <div id="panel-sub"></div>
+    </div>
+    <button id="btn-close-panel">✕</button>
+  </div>
+  <div id="panel-body"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+  // ── COSTAR DATA ──
+  var costarData = {
+    "Barrow County": {
+      "asset_val": 632066362.9496,
+      "stab_vac_avg": 0.08122642744935536,
+      "supply_pct": 0.5656565656565656, "inv_2026": 2277, "inv_2031": 3565, "uc_units": 454, "uc_pct": 0.199385155906895,
+      "rents": {"2026 EST": 1888.4797125951, "2027": 1909.76796280642, "2028": 1943.2113271344, "2029": 1977.46449704142, "2030": 2015.39983093829, "2031": 2026.44885883347},
+      "rent_cagr": 0.014202472249424503,
+      "stab_vac": {"2026 EST": 0.0919885500933416, "2027": 0.0881119233073697, "2028": 0.0833107223476298, "2029": 0.0781414361702128, "2030": 0.0733332326283988, "2031": 0.0724727001491795}
+    },
+    "Bartow County": {
+      "asset_val": 1316639075.837,
+      "stab_vac_avg": 0.0783041605426786,
+      "supply_pct": 0.1298112103029416, "inv_2026": 6833, "inv_2031": 7720, "uc_units": 0, "uc_pct": 0,
+      "rents": {"2026 EST": 1594.56563500534, "2027": 1621.30949839915, "2028": 1655.08614118006, "2029": 1689.19469431316, "2030": 1726.0088428114, "2031": 1740.86949230066},
+      "rent_cagr": 0.017711689482431403,
+      "stab_vac": {"2026 EST": 0.0823063489271896, "2027": 0.0821284479778776, "2028": 0.0801944957207585, "2029": 0.0770605048859935, "2030": 0.0743376504116529, "2031": 0.0737975153325995}
+    },
+    "Buckhead": {
+      "asset_val": 8535123676.0878,
+      "stab_vac_avg": 0.08114633958711114,
+      "supply_pct": 0.024419147484468703, "inv_2026": 27847, "inv_2031": 28527, "uc_units": 483, "uc_pct": 0.0173447768161741,
+      "rents": {"2026 EST": 2024.175716118, "2027": 2057.88168020522, "2028": 2102.30116146501, "2029": 2146.73699586718, "2030": 2194.19773407439, "2031": 2221.73852786091},
+      "rent_cagr": 0.018800025577321744,
+      "stab_vac": {"2026 EST": 0.0806368646046629, "2027": 0.0831378279438682, "2028": 0.0830625591058891, "2029": 0.0814298073141958, "2030": 0.0795414350447782, "2031": 0.0790695435092725}
+    },
+    "Butts County": {
+      "asset_val": 30931383.5546,
+      "stab_vac_avg": 0.06493661430287764,
+      "supply_pct": -0.006578947368421052, "inv_2026": 304, "inv_2031": 302, "uc_units": 0, "uc_pct": 0,
+      "rents": {"2026 EST": 908.634703196347, "2027": 931.803652968037, "2028": 959.173515981735, "2029": 987.063926940639, "2030": 1016.4200913242, "2031": 1024.12785388128},
+      "rent_cagr": 0.024219338746596986,
+      "stab_vac": {"2026 EST": 0.0627174342105263, "2027": 0.0636177631578947, "2028": 0.0646349834983498, "2029": 0.0653785478547855, "2030": 0.0664765676567657, "2031": 0.0667943894389439}
+    },
+    "Carroll County": {
+      "asset_val": 660518550.8446,
+      "stab_vac_avg": 0.11182517483654968,
+      "supply_pct": 0.0940512579355749, "inv_2026": 4253, "inv_2031": 4653, "uc_units": 192, "uc_pct": 0.0451446038090759,
+      "rents": {"2026 EST": 1359.45474832631, "2027": 1383.91941482767, "2028": 1415.21026531118, "2029": 1447.12620877758, "2030": 1481.23704438383, "2031": 1495.11157946938},
+      "rent_cagr": 0.019205526314240107,
+      "stab_vac": {"2026 EST": 0.110454622441778, "2027": 0.112569684210526, "2028": 0.112585896248263, "2029": 0.11193061411549, "2030": 0.11170138384755, "2031": 0.111708848155691}
+    },
+    "Cherokee County": {
+      "asset_val": 3588630587.5752,
+      "stab_vac_avg": 0.06846737060666934,
+      "supply_pct": 0.10316709137240626, "inv_2026": 13735, "inv_2031": 15152, "uc_units": 518, "uc_pct": 0.0377138696760102,
+      "rents": {"2026 EST": 1725.87508491207, "2027": 1754.40720054344, "2028": 1792.20673258359, "2029": 1830.22250735905, "2030": 1870.92301305759, "2031": 1895.30953279493},
+      "rent_cagr": 0.018906088882211236,
+      "stab_vac": {"2026 EST": 0.0701517326937391, "2027": 0.0715344641101278, "2028": 0.0704004920148411, "2029": 0.0679994604031106, "2030": 0.0656295859375, "2031": 0.0650884884806974}
+    },
+    "Clayton County": {
+      "asset_val": 3235156975.7158,
+      "stab_vac_avg": 0.11866874836979767,
+      "supply_pct": 0.014520486267447097, "inv_2026": 26652, "inv_2031": 27039, "uc_units": 0, "uc_pct": 0,
+      "rents": {"2026 EST": 1306.85481018849, "2027": 1332.58790774672, "2028": 1364.23337973588, "2029": 1396.31032017758, "2030": 1430.33707061966, "2031": 1446.89092892885},
+      "rent_cagr": 0.020567397868067383,
+      "stab_vac": {"2026 EST": 0.116601239780448, "2027": 0.118359691199571, "2028": 0.118995231732458, "2029": 0.119051199939147, "2030": 0.119436056690288, "2031": 0.119569070876874}
+    },
+    "Coweta County": {
+      "asset_val": 1159808065.1963,
+      "stab_vac_avg": 0.07895515853948433,
+      "supply_pct": 0.08620689655172414, "inv_2026": 5742, "inv_2031": 6237, "uc_units": 0, "uc_pct": 0,
+      "rents": {"2026 EST": 1699.81199497217, "2027": 1728.18602980786, "2028": 1766.02370263961, "2029": 1804.7599209912, "2030": 1846.21601723828, "2031": 1868.18333632609},
+      "rent_cagr": 0.0190693057326472,
+      "stab_vac": {"2026 EST": 0.0793367595818815, "2027": 0.0812042715749262, "2028": 0.0806614601311702, "2029": 0.0787599382610187, "2030": 0.07706276849642, "2031": 0.0767057531914894}
+    },
+    "CumberlandGalleria Submarket": {
+      "asset_val": 11808035588.0103,
+      "stab_vac_avg": 0.10025080439468764,
+      "supply_pct": 0.060496427092895586, "inv_2026": 55557, "inv_2031": 58918, "uc_units": 1563, "uc_pct": 0.0281332685350181,
+      "rents": {"2026 EST": 1575.94578955934, "2027": 1603.80201797371, "2028": 1639.86906677757, "2029": 1676.52116521708, "2030": 1715.69001681645, "2031": 1741.09522087409},
+      "rent_cagr": 0.02013171552642956,
+      "stab_vac": {"2026 EST": 0.0990576355581591, "2027": 0.101275313731213, "2028": 0.101452290602008, "2029": 0.100491230943681, "2030": 0.099688069522924, "2031": 0.0995402860101407}
+    },
+    "Dawson County": {
+      "asset_val": 526348572.3519,
+      "stab_vac_avg": 0.14232208841299135,
+      "supply_pct": 0.20242718446601943, "inv_2026": 2060, "inv_2031": 2477, "uc_units": 197, "uc_pct": 0.0956310679611651,
+      "rents": {"2026 EST": 1939.86228910169, "2027": 1960.80848153215, "2028": 1993.52804377565, "2029": 2026.56497948016, "2030": 2062.40218878249, "2031": 2079.80209758322},
+      "rent_cagr": 0.014028642333704155,
+      "stab_vac": {"2026 EST": 0.146472917786136, "2027": 0.147800741525424, "2028": 0.145040930232558, "2029": 0.141148261964736, "2030": 0.137204921259843, "2031": 0.136264757709251}
+    },
+    "Decatur North Druid Hills": {
+      "asset_val": 4794300089.3614,
+      "stab_vac_avg": 0.09871144589183416,
+      "supply_pct": 0.061870125317675925, "inv_2026": 22822, "inv_2031": 24234, "uc_units": 372, "uc_pct": 0.0163000613443169,
+      "rents": {"2026 EST": 1689.39073514602, "2027": 1719.59249529314, "2028": 1758.14641621787, "2029": 1796.93033845615, "2030": 1838.46727089627, "2031": 1860.70099391392},
+      "rent_cagr": 0.01950485034878291,
+      "stab_vac": {"2026 EST": 0.0991087023235423, "2027": 0.10011780349345, "2028": 0.0997689996097307, "2029": 0.0985612930997374, "2030": 0.0974658345800385, "2031": 0.0972460422445061}
+    },
+    "Douglas County": {
+      "asset_val": 2074216609.0003,
+      "stab_vac_avg": 0.07295044553538045,
+      "supply_pct": 0.11546521374685666, "inv_2026": 9544, "inv_2031": 10646, "uc_units": 300, "uc_pct": 0.0314333612740989,
+      "rents": {"2026 EST": 1573.54681125188, "2027": 1599.54133562379, "2028": 1633.93890916899, "2029": 1668.19132488727, "2030": 1704.98346575048, "2031": 1725.57440412283},
+      "rent_cagr": 0.01861672937278236,
+      "stab_vac": {"2026 EST": 0.0747268215043622, "2027": 0.0762659792613305, "2028": 0.0748636747744661, "2029": 0.0723826286353468, "2030": 0.0700161017878688, "2031": 0.0694474672489083}
+    },
+    "Downtown Atlanta": {
+      "asset_val": 2151447979.0186,
+      "stab_vac_avg": 0.14114274243047284,
+      "supply_pct": 0.19747186681054416, "inv_2026": 6487, "inv_2031": 7768, "uc_units": 852, "uc_pct": 0.131339602281486,
+      "rents": {"2026 EST": 1817.98589120552, "2027": 1839.47170402884, "2028": 1873.03433139991, "2029": 1907.15833202696, "2030": 1943.78758426086, "2031": 1961.16742436119},
+      "rent_cagr": 0.015277665445825317,
+      "stab_vac": {"2026 EST": 0.140528178924443, "2027": 0.143423531369612, "2028": 0.142895561400625, "2029": 0.141203814935065, "2030": 0.139581135707411, "2031": 0.139224232245681}
+    },
+    "Eastside Atlanta": {
+      "asset_val": 5886752591.7156,
+      "stab_vac_avg": 0.08470941866408997,
+      "supply_pct": 0.041514712494379775, "inv_2026": 20017, "inv_2031": 20848, "uc_units": 31, "uc_pct": 0.00154868361892391,
+      "rents": {"2026 EST": 2014.14319148936, "2027": 2048.19856382979, "2028": 2091.93739361702, "2029": 2135.5689893617, "2030": 2182.96941489362, "2031": 2204.01659574468},
+      "rent_cagr": 0.01818080076441797,
+      "stab_vac": {"2026 EST": 0.086042261873797, "2027": 0.0877371948696731, "2028": 0.0867193784558673, "2029": 0.0843262829930594, "2030": 0.0819833149448345, "2031": 0.0814480788473084}
+    },
+    "Fayette County": {
+      "asset_val": 693611506.3986,
+      "stab_vac_avg": 0.04801898719241127,
+      "supply_pct": 0.014788524105294291, "inv_2026": 3381, "inv_2031": 3431, "uc_units": 0, "uc_pct": 0,
+      "rents": {"2026 EST": 1840.86538461538, "2027": 1876.69627594628, "2028": 1923.24267399267, "2029": 1970.79181929182, "2030": 2021.47741147741, "2031": 2049.26434676435},
+      "rent_cagr": 0.021680702650074934,
+      "stab_vac": {"2026 EST": 0.049230128992629, "2027": 0.0504529123237278, "2028": 0.0497424427480916, "2029": 0.0477081204379562, "2030": 0.0456909421387458, "2031": 0.0452893765133172}
+    },
+    "Forsyth County": {
+      "asset_val": 2130243050.8559,
+      "stab_vac_avg": 0.05753428481551078,
+      "supply_pct": 0.16210214655810512, "inv_2026": 6755, "inv_2031": 7850, "uc_units": 601, "uc_pct": 0.0889711324944486,
+      "rents": {"2026 EST": 1822.36322800496, "2027": 1851.23451053284, "2028": 1890.27245972739, "2029": 1929.42596034696, "2030": 1971.33782527881, "2031": 1999.66325898389},
+      "rent_cagr": 0.01874240673216443,
+      "stab_vac": {"2026 EST": 0.0600811123093514, "2027": 0.061402822273074, "2028": 0.05965037515006, "2029": 0.056869966071692, "2030": 0.0539255550718328, "2031": 0.0532758780170545}
+    },
+    "Haralson County": {
+      "asset_val": 14961207.7675,
+      "stab_vac_avg": 0.11914528085735417,
+      "supply_pct": -0.006060606060606061, "inv_2026": 165, "inv_2031": 164, "uc_units": 0, "uc_pct": 0,
+      "rents": {"2026 EST": 1100.05555555556, "2027": 1119.68055555556, "2028": 1145.54166666667, "2029": 1172.30555555556, "2030": 1200.76388888889, "2031": 1208.59722222222},
+      "rent_cagr": 0.018998147829965006,
+      "stab_vac": {"2026 EST": 0.116135757575758, "2027": 0.117827878787879, "2028": 0.118806666666667, "2029": 0.119373333333333, "2030": 0.12120243902439, "2031": 0.121525609756098}
+    },
+    "Heard County": {
+      "asset_val": 927010.92,
+      "stab_vac_avg": 0.11083939393939383,
+      "supply_pct": -0.045454545454545456, "inv_2026": 22, "inv_2031": 21, "uc_units": 0, "uc_pct": 0,
+      "rents": {"2026 EST": 482.545454545455, "2027": 491.272727272727, "2028": 502.954545454545, "2029": 515, "2030": 527.636363636364, "2031": 531},
+      "rent_cagr": 0.019321673122564276,
+      "stab_vac": {"2026 EST": 0.105213636363636, "2027": 0.109213636363636, "2028": 0.111318181818182, "2029": 0.112140909090909, "2030": 0.113390909090909, "2031": 0.113759090909091}
+    },
+    "Henry County": {
+      "asset_val": 3068005383.3186,
+      "stab_vac_avg": 0.10613251293676551,
+      "supply_pct": 0.22488245931283907, "inv_2026": 13825, "inv_2031": 16934, "uc_units": 584, "uc_pct": 0.0422423146473779,
+      "rents": {"2026 EST": 1690.2069398302, "2027": 1713.66696197859, "2028": 1746.25227021041, "2029": 1779.22118863049, "2030": 1814.68637873754, "2031": 1831.55415282392},
+      "rent_cagr": 0.016192479810705374,
+      "stab_vac": {"2026 EST": 0.109782932368775, "2027": 0.110965975720538, "2028": 0.108608311313956, "2029": 0.104886949099938, "2030": 0.101620777459696, "2031": 0.10093013165769}
+    },
+    "Kennesaw": {
+      "asset_val": 3743709457.4695,
+      "stab_vac_avg": 0.08958519554997994,
+      "supply_pct": 0.05707211782630777, "inv_2026": 15752, "inv_2031": 16651, "uc_units": 229, "uc_pct": 0.0145378364652108,
+      "rents": {"2026 EST": 1634.87145678069, "2027": 1662.25944327664, "2028": 1697.46162175935, "2029": 1733.37932352379, "2030": 1771.78584623224, "2031": 1793.15134721957},
+      "rent_cagr": 0.0186539347121637,
+      "stab_vac": {"2026 EST": 0.0902300480145341, "2027": 0.0917033008832442, "2028": 0.0912427760775312, "2029": 0.0894205672864797, "2030": 0.0876723957359267, "2031": 0.0872420853021637}
+    },
+    "Lumpkin County": {
+      "asset_val": 51934464.6376,
+      "stab_vac_avg": 0.011467597676791166,
+      "supply_pct": 0.006369426751592357, "inv_2026": 471, "inv_2031": 474, "uc_units": 0, "uc_pct": 0,
+      "rents": {"2026 EST": 1030.18, "2027": 1058.9075, "2028": 1092.585, "2029": 1127.2875, "2030": 1164.0625, "2031": 1173.465},
+      "rent_cagr": 0.02638762060348787,
+      "stab_vac": {"2026 EST": 0.0115382165605096, "2027": 0.0119664543524416, "2028": 0.0116389830508475, "2029": 0.0111558139534884, "2030": 0.0112320675105485, "2031": 0.0112740506329114}
+    },
+    "MidtownAtlanta": {
+      "asset_val": 8696616264.1038,
+      "stab_vac_avg": 0.0796996166341551,
+      "supply_pct": 0.0768814293448836, "inv_2026": 24011, "inv_2031": 25857, "uc_units": 357, "uc_pct": 0.0148681854150181,
+      "rents": {"2026 EST": 2267.4250932222, "2027": 2304.23285808291, "2028": 2351.55099802588, "2029": 2398.80443079623, "2030": 2449.34266286466, "2031": 2475.75924544856},
+      "rent_cagr": 0.0177358951639639,
+      "stab_vac": {"2026 EST": 0.0821172859744991, "2027": 0.0831073875174873, "2028": 0.0817264444444445, "2029": 0.0790917406710705, "2030": 0.0764096001378835, "2031": 0.0757452410595458}
+    },
+    "Morgan County": {
+      "asset_val": 14773958.44,
+      "stab_vac_avg": 0.02304250167960863,
+      "supply_pct": 0.22448979591836735, "inv_2026": 147, "inv_2031": 180, "uc_units": 0, "uc_pct": 0,
+      "rents": {"2026 EST": 1023.94326241135, "2027": 1043.17021276596, "2028": 1066.46808510638, "2029": 1089.97163120567, "2030": 1115.68085106383, "2031": 1122.54609929078},
+      "rent_cagr": 0.018557752114446213,
+      "stab_vac": {"2026 EST": 0.0251959183673469, "2027": 0.0254026315789474, "2028": 0.0233826086956522, "2029": 0.02208, "2030": 0.0211966292134831, "2031": 0.0209972222222222}
+    },
+    "Newton County": {
+      "asset_val": 1017502596.2693,
+      "stab_vac_avg": 0.08168940223831375,
+      "supply_pct": 0.12790005948839978, "inv_2026": 5043, "inv_2031": 5688, "uc_units": 0, "uc_pct": 0,
+      "rents": {"2026 EST": 1689.247039608, "2027": 1716.70334830543, "2028": 1752.24540628828, "2029": 1787.97876684361, "2030": 1826.36545528787, "2031": 1845.77501020825},
+      "rent_cagr": 0.017881260772975915,
+      "stab_vac": {"2026 EST": 0.0857061760164694, "2027": 0.0858035912999494, "2028": 0.0837546548759519, "2029": 0.0804880782069623, "2030": 0.0774911430558776, "2031": 0.0768927699746719}
+    },
+    "North Atlanta": {
+      "asset_val": 5819141096.7376,
+      "stab_vac_avg": 0.07083615790655722,
+      "supply_pct": 0.09398376571701417, "inv_2026": 25132, "inv_2031": 27494, "uc_units": 950, "uc_pct": 0.0378004138150565,
+      "rents": {"2026 EST": 1756.12230477267, "2027": 1790.58608576274, "2028": 1833.27101671647, "2029": 1876.64443188242, "2030": 1922.78272631834, "2031": 1947.00520875394},
+      "rent_cagr": 0.020851264063710184,
+      "stab_vac": {"2026 EST": 0.0735169199248762, "2027": 0.0726618938623262, "2028": 0.0718409498282938, "2029": 0.0700823779983457, "2030": 0.0686151969597908, "2031": 0.0682996088657106}
+    },
+    "North Fulton": {
+      "asset_val": 5651634841.241,
+      "stab_vac_avg": 0.08186265295486815,
+      "supply_pct": 0.10985953417403402, "inv_2026": 22283, "inv_2031": 24731, "uc_units": 1180, "uc_pct": 0.0529551676165687,
+      "rents": {"2026 EST": 1783.71291670451, "2027": 1813.23871377963, "2028": 1853.11036424743, "2029": 1892.93718775547, "2030": 1936.13879553093, "2031": 1970.85684440004},
+      "rent_cagr": 0.020154675963548918,
+      "stab_vac": {"2026 EST": 0.0826144588081618, "2027": 0.0844313684210526, "2028": 0.0837244599210398, "2029": 0.0816609476550149, "2030": 0.079606519091937, "2031": 0.0791381638320028}
+    },
+    "North Gwinnett": {
+      "asset_val": 7630725768.1407,
+      "stab_vac_avg": 0.09076275690644425,
+      "supply_pct": 0.078110940175902, "inv_2026": 34451, "inv_2031": 37142, "uc_units": 973, "uc_pct": 0.0282430118138806,
+      "rents": {"2026 EST": 1626.09821065474, "2027": 1654.18195549875, "2028": 1690.4345843258, "2029": 1726.7758380294, "2030": 1765.54601173532, "2031": 1792.16621158427},
+      "rent_cagr": 0.019638681338545183,
+      "stab_vac": {"2026 EST": 0.0914162036048675, "2027": 0.0928979283399461, "2028": 0.0923080348325703, "2029": 0.0905303957206608, "2030": 0.0888930177549352, "2031": 0.0885309611856856}
+    },
+    "Northlake": {
+      "asset_val": 2758894795.0674,
+      "stab_vac_avg": 0.10594488229926617,
+      "supply_pct": 0, "inv_2026": 17380, "inv_2031": 17380, "uc_units": 0, "uc_pct": 0,
+      "rents": {"2026 EST": 1442.39723411642, "2027": 1469.22156000463, "2028": 1503.48808008332, "2029": 1538.31581992825, "2030": 1575.39572966092, "2031": 1595.21519500058},
+      "rent_cagr": 0.020344621100063964,
+      "stab_vac": {"2026 EST": 0.10296585520623, "2027": 0.105609438643051, "2028": 0.106663163359483, "2029": 0.106671914648212, "2030": 0.106842103442311, "2031": 0.10691681849631}
+    },
+    "Outlying Gwinnett County": {
+      "asset_val": 8559037048.8016,
+      "stab_vac_avg": 0.09135482433052237,
+      "supply_pct": 0.12593874759206009, "inv_2026": 35819, "inv_2031": 40330, "uc_units": 1748, "uc_pct": 0.0488009157151233,
+      "rents": {"2026 EST": 1670.36197684773, "2027": 1696.38824577026, "2028": 1731.90825356189, "2029": 1767.54499666073, "2030": 1805.90714047195, "2031": 1825.8857413179},
+      "rent_cagr": 0.017964423724275314,
+      "stab_vac": {"2026 EST": 0.0922226050051222, "2027": 0.0941182836253917, "2028": 0.0933692472565158, "2029": 0.0910487381481586, "2030": 0.0889271149794877, "2031": 0.0884429569684583}
+    },
+    "Paulding County": {
+      "asset_val": 746699992.0335,
+      "stab_vac_avg": 0.10399192322247851,
+      "supply_pct": 0.0033695245226506927, "inv_2026": 2671, "inv_2031": 2680, "uc_units": 0, "uc_pct": 0,
+      "rents": {"2026 EST": 1840.20994475138, "2027": 1868.93667658309, "2028": 1907.75053123672, "2029": 1947.01274968126, "2030": 1988.99405014875, "2031": 2004.30216744581},
+      "rent_cagr": 0.017230011029653047,
+      "stab_vac": {"2026 EST": 0.10120308, "2027": 0.104345221911236, "2028": 0.10513591689972, "2029": 0.104607302474062, "2030": 0.10438528708134, "2031": 0.104274730968513}
+    },
+    "Pickens County": {
+      "asset_val": 46583572.0211,
+      "stab_vac_avg": 0.06397134614940338,
+      "supply_pct": 0.0518018018018018, "inv_2026": 444, "inv_2031": 467, "uc_units": 0, "uc_pct": 0,
+      "rents": {"2026 EST": 1520.46194225722, "2027": 1553.36482939633, "2028": 1593.96325459318, "2029": 1635.75853018373, "2030": 1680.65879265092, "2031": 1696.2624671916},
+      "rent_cagr": 0.022123797251524024,
+      "stab_vac": {"2026 EST": 0.0623864864864865, "2027": 0.0644098434004474, "2028": 0.0648395143487859, "2029": 0.0642584782608696, "2030": 0.06406330472103, "2031": 0.0638704496788009}
+    },
+    "Rockdale County": {
+      "asset_val": 840269802.154,
+      "stab_vac_avg": 0.15007289159634066,
+      "supply_pct": 0.05414813382324502, "inv_2026": 5171, "inv_2031": 5451, "uc_units": 0, "uc_pct": 0,
+      "rents": {"2026 EST": 1464.26107594937, "2027": 1483.83959651899, "2028": 1510.70075158228, "2029": 1537.65150316456, "2030": 1566.65862341772, "2031": 1586.38548259494},
+      "rent_cagr": 0.016150515501360152,
+      "stab_vac": {"2026 EST": 0.148168815623688, "2027": 0.151144391159299, "2028": 0.151471399134556, "2029": 0.150522832722833, "2030": 0.149713050472552, "2031": 0.149416860465116}
+    },
+    "Sandy Springs": {
+      "asset_val": 8307924092.47,
+      "stab_vac_avg": 0.07713431067451472,
+      "supply_pct": 0.060876623376623376, "inv_2026": 34496, "inv_2031": 36596, "uc_units": 1065, "uc_pct": 0.0308731447124304,
+      "rents": {"2026 EST": 1689.49461175511, "2027": 1719.20315139512, "2028": 1758.15987068212, "2029": 1797.68267606454, "2030": 1839.85428438283, "2031": 1870.02694122444},
+      "rent_cagr": 0.020512222312446093,
+      "stab_vac": {"2026 EST": 0.0769329283324529, "2027": 0.0790986585223287, "2028": 0.0788085330470609, "2029": 0.0771605355600346, "2030": 0.0755733950723146, "2031": 0.0752318135128966}
+    },
+    "South Atlanta": {
+      "asset_val": 3232512466.345,
+      "stab_vac_avg": 0.13523646089183913,
+      "supply_pct": 0.15004427717511623, "inv_2026": 18068, "inv_2031": 20779, "uc_units": 1715, "uc_pct": 0.0949191941554129,
+      "rents": {"2026 EST": 1375.21052631579, "2027": 1397.48527122845, "2028": 1426.62114486655, "2029": 1456.07563267424, "2030": 1487.6565976826, "2031": 1500.68622816625},
+      "rent_cagr": 0.017616503870403033,
+      "stab_vac": {"2026 EST": 0.135607925474332, "2027": 0.136780711780016, "2028": 0.136166821306802, "2029": 0.134908399558499, "2030": 0.134057750395289, "2031": 0.133897156836097}
+    },
+    "South Fulton": {
+      "asset_val": 2143370382.3964,
+      "stab_vac_avg": 0.147091567061643,
+      "supply_pct": 0.20325935631807387, "inv_2026": 12211, "inv_2031": 14693, "uc_units": 930, "uc_pct": 0.0761608385881582,
+      "rents": {"2026 EST": 1538.2317934562, "2027": 1559.0359665503, "2028": 1587.41804010717, "2029": 1616.18437931314, "2030": 1647.24527076398, "2031": 1663.84598522367},
+      "rent_cagr": 0.015823528952476185,
+      "stab_vac": {"2026 EST": 0.153787931495852, "2027": 0.152520770107885, "2028": 0.149162464818763, "2029": 0.14508458478369, "2030": 0.141421069613616, "2031": 0.140572581550052}
+    },
+    "Southeast DeKalb": {
+      "asset_val": 3895036063.7914,
+      "stab_vac_avg": 0.18020120373263349,
+      "supply_pct": 0.015931648090450647, "inv_2026": 31133, "inv_2031": 31629, "uc_units": 0, "uc_pct": 0,
+      "rents": {"2026 EST": 1279.72836851707, "2027": 1299.57180088611, "2028": 1325.25843758144, "2029": 1351.06710972114, "2030": 1378.66995699765, "2031": 1395.46875814438},
+      "rent_cagr": 0.017467308491141864,
+      "stab_vac": {"2026 EST": 0.176065025450274, "2027": 0.178876771294608, "2028": 0.180343919444805, "2029": 0.181129849830454, "2030": 0.182227034416211, "2031": 0.182564621959449}
+    },
+    "Spalding County": {
+      "asset_val": 261193322.1265,
+      "stab_vac_avg": 0.1532538099174995,
+      "supply_pct": 0.15347255949490043, "inv_2026": 2059, "inv_2031": 2375, "uc_units": 194, "uc_pct": 0.0942204953861098,
+      "rents": {"2026 EST": 1231.3948025987, "2027": 1250.11994002998, "2028": 1275.20739630185, "2029": 1300.53023488256, "2030": 1327.70214892554, "2031": 1338.24637681159},
+      "rent_cagr": 0.01678177212273746,
+      "stab_vac": {"2026 EST": 0.150311129296236, "2027": 0.152825516866159, "2028": 0.153899783432593, "2029": 0.153662627894453, "2030": 0.154381082529475, "2031": 0.154442719486081}
+    },
+    "Walton County": {
+      "asset_val": 233670246.0525,
+      "stab_vac_avg": 0.12051830590435149,
+      "supply_pct": 0.11420982735723771, "inv_2026": 1506, "inv_2031": 1678, "uc_units": 100, "uc_pct": 0.0664010624169987,
+      "rents": {"2026 EST": 1601.26188557615, "2027": 1625.58904109589, "2028": 1660.04995970991, "2029": 1695.38436744561, "2030": 1733.15551974214, "2031": 1746.68976631749},
+      "rent_cagr": 0.017538105276104554,
+      "stab_vac": {"2026 EST": 0.1189125, "2027": 0.121374308943089, "2028": 0.121970257234727, "2029": 0.120510174880763, "2030": 0.120255074744296, "2031": 0.120087519623234}
+    },
+    "West Midtown": {
+      "asset_val": 4809295383.0935,
+      "stab_vac_avg": 0.0881466119907278,
+      "supply_pct": 0.11614956245027844, "inv_2026": 16341, "inv_2031": 18239, "uc_units": 854, "uc_pct": 0.0522611835261,
+      "rents": {"2026 EST": 1843.69542198692, "2027": 1870.13565867331, "2028": 1906.63270009343, "2029": 1943.38343195266, "2030": 1982.83307380878, "2031": 1999.82391778262},
+      "rent_cagr": 0.01639031054691631,
+      "stab_vac": {"2026 EST": 0.0899770133440622, "2027": 0.0918270700636942, "2028": 0.0904951313302483, "2029": 0.0876577671145233, "2030": 0.0847940721649485, "2031": 0.0841286179268903}
+    },
+    "Westside Atlanta": {
+      "asset_val": 2440405898.2852,
+      "stab_vac_avg": 0.1661787984256085,
+      "supply_pct": 0.025741433918802188, "inv_2026": 17365, "inv_2031": 17812, "uc_units": 100, "uc_pct": 0.00575871004894904,
+      "rents": {"2026 EST": 1317.33348137809, "2027": 1339.68853499143, "2028": 1367.48670769621, "2029": 1395.43061988453, "2030": 1425.30962502379, "2031": 1437.92855783262},
+      "rent_cagr": 0.017673148699549834,
+      "stab_vac": {"2026 EST": 0.164055764621285, "2027": 0.165767633167932, "2028": 0.166432654883057, "2029": 0.166578854468992, "2030": 0.167032476415094, "2031": 0.167205406997291}
+    }
+  };
+
+  // ── COSTAR SUBMARKET BOUNDARIES (polygon coords [lat, lng]) ──
+  // County boundaries sourced from US Census TIGER/Line; urban submarkets approximated from CoStar Analytics
+  var costarBoundaries = {
+    // ── COUNTY-BASED SUBMARKETS (Census TIGER/Line) ──
+    "Barrow County": [[33.9249,-83.613],[33.9662,-83.5369],[34.0319,-83.5633],[34.0649,-83.7645],[34.1275,-83.8177],[34.0043,-83.8691],[33.9277,-83.7988],[33.8946,-83.7609],[33.9249,-83.613]],
+    "Bartow County": [[34.0826,-84.8803],[34.0782,-84.6592],[34.4126,-84.6532],[34.3925,-85.0058],[34.0829,-85.047],[34.0826,-84.8803]],
+    "Butts County": [[33.3435,-83.863],[33.377,-83.8642],[33.4418,-83.9435],[33.3752,-83.9644],[33.3021,-84.1024],[33.2028,-84.1238],[33.1802,-83.8222],[33.2486,-83.8134],[33.3435,-83.863]],
+    "Carroll County": [[33.4362,-84.995],[33.4574,-84.9828],[33.4374,-84.9354],[33.522,-84.8149],[33.5471,-84.8332],[33.5741,-84.8092],[33.5734,-84.9058],[33.7807,-84.9017],[33.8124,-85.0493],[33.7146,-85.0509],[33.6531,-85.3382],[33.4281,-85.2938],[33.4362,-84.995]],
+    "Cherokee County": [[34.1182,-84.3883],[34.1769,-84.3523],[34.1859,-84.259],[34.381,-84.2576],[34.3815,-84.5826],[34.4122,-84.5828],[34.4126,-84.6532],[34.0782,-84.6592],[34.0735,-84.4189],[34.1182,-84.3883]],
+    "Clayton County": [[33.5964,-84.4582],[33.5509,-84.4587],[33.4634,-84.3817],[33.3602,-84.3951],[33.3525,-84.3544],[33.4362,-84.3536],[33.4357,-84.2947],[33.5491,-84.2926],[33.5489,-84.2637],[33.5986,-84.2439],[33.6473,-84.2817],[33.6489,-84.4579],[33.5964,-84.4582]],
+    "Coweta County": [[33.2234,-84.8128],[33.2211,-84.5024],[33.3182,-84.5181],[33.4086,-84.6186],[33.5113,-84.6213],[33.5111,-84.8512],[33.4374,-84.9354],[33.4573,-84.9839],[33.4298,-85.0132],[33.2247,-84.939],[33.2239,-84.8621],[33.191,-84.8523],[33.2236,-84.8524],[33.2234,-84.8128]],
+    "Dawson County": [[34.566,-84.3466],[34.4679,-84.3197],[34.4673,-84.2569],[34.3352,-84.2581],[34.334,-83.9571],[34.4184,-83.9806],[34.4659,-84.1067],[34.5392,-84.191],[34.6179,-84.1968],[34.5975,-84.2547],[34.5683,-84.2551],[34.566,-84.3466]],
+    "Douglas County": [[33.6039,-84.7836],[33.6586,-84.6573],[33.7301,-84.5854],[33.8044,-84.6221],[33.7807,-84.9017],[33.5734,-84.9058],[33.5741,-84.8092],[33.6039,-84.7836]],
+    "Fayette County": [[33.3857,-84.3899],[33.4634,-84.3817],[33.5507,-84.4394],[33.5195,-84.5941],[33.4752,-84.6268],[33.4084,-84.6185],[33.3185,-84.5183],[33.2574,-84.4975],[33.2565,-84.4329],[33.3196,-84.384],[33.3857,-84.3899]],
+    "Forsyth County": [[34.2882,-84.2586],[34.1096,-84.259],[34.0507,-84.0978],[34.0674,-84.1179],[34.1629,-84.0754],[34.1957,-83.9891],[34.2857,-83.9255],[34.3342,-83.9739],[34.3352,-84.2581],[34.2882,-84.2586]],
+    "Haralson County": [[33.6699,-85.2356],[33.7146,-85.0509],[33.9043,-85.0367],[33.9017,-85.3866],[33.6531,-85.3382],[33.6699,-85.2356]],
+    "Heard County": [[33.1883,-85.0408],[33.2247,-84.939],[33.4255,-85.0154],[33.4281,-85.2938],[33.1296,-85.2365],[33.1637,-85.1174],[33.1951,-85.108],[33.1717,-85.088],[33.1883,-85.0408]],
+    "Henry County": [[33.3527,-84.3544],[33.3356,-84.1506],[33.2976,-84.0861],[33.3616,-84.0327],[33.3752,-83.9644],[33.4076,-83.9731],[33.4506,-83.9225],[33.5643,-84.1309],[33.6462,-84.1841],[33.6473,-84.2817],[33.5903,-84.2439],[33.5491,-84.2926],[33.4357,-84.2947],[33.4362,-84.3536],[33.3527,-84.3544]],
+    "Lumpkin County": [[34.4327,-83.9751],[34.4511,-83.9207],[34.4693,-83.9319],[34.4599,-83.8876],[34.5235,-83.8329],[34.6205,-83.8762],[34.7263,-83.8636],[34.7271,-83.9643],[34.6419,-84.0365],[34.6642,-84.128],[34.6027,-84.1886],[34.5392,-84.191],[34.4659,-84.1067],[34.4327,-83.9751]],
+    "Morgan County": [[33.4634,-83.3908],[33.4834,-83.2799],[33.5332,-83.2692],[33.5974,-83.349],[33.8178,-83.5059],[33.5886,-83.6874],[33.5262,-83.6822],[33.4345,-83.5337],[33.4634,-83.3908]],
+    "Newton County": [[33.5187,-84.0552],[33.4856,-83.949],[33.3672,-83.8539],[33.4377,-83.8244],[33.5009,-83.7053],[33.4872,-83.6746],[33.5969,-83.6809],[33.7442,-83.9148],[33.6516,-83.931],[33.5187,-84.0552]],
+    "Paulding County": [[33.9735,-84.9694],[33.9526,-85.0498],[33.8119,-85.0379],[33.7748,-84.8792],[33.7886,-84.7241],[34.0823,-84.7378],[34.0825,-84.9227],[33.9735,-84.9694]],
+    "Pickens County": [[34.5493,-84.4372],[34.549,-84.6541],[34.4126,-84.6532],[34.4122,-84.5828],[34.3815,-84.5826],[34.381,-84.2576],[34.4673,-84.2569],[34.4679,-84.3197],[34.5627,-84.3456],[34.5493,-84.4372]],
+    "Rockdale County": [[33.7285,-84.0544],[33.6147,-84.1158],[33.643,-84.1841],[33.5643,-84.1309],[33.5258,-84.0445],[33.6513,-83.9312],[33.7128,-83.9132],[33.7442,-83.9148],[33.7861,-83.982],[33.7285,-84.0544]],
+    "Spalding County": [[33.3146,-84.3937],[33.2565,-84.4329],[33.2486,-84.508],[33.1834,-84.4964],[33.2085,-84.4045],[33.1786,-84.124],[33.2527,-84.1226],[33.2856,-84.089],[33.3356,-84.1506],[33.3526,-84.2474],[33.3525,-84.3881],[33.3146,-84.3937]],
+    "Walton County": [[33.6989,-83.6001],[33.8178,-83.5059],[33.9169,-83.669],[33.8946,-83.7609],[33.9298,-83.7991],[33.7862,-83.9822],[33.5969,-83.6809],[33.6989,-83.6001]],
+    // ── URBAN / NEIGHBORHOOD SUBMARKETS (shared-edge topology, no overlaps) ──
+    // Cobb County subdivisions
+    "CumberlandGalleria Submarket": [
+      [33.8132,-84.4892],[33.8435,-84.46],[33.887,-84.4445],[33.9226,-84.4369],
+      [33.9506,-84.3988],[33.9657,-84.3827],[33.9871,-84.3749],[33.9954,-84.3899],
+      [34.0007,-84.3927],[34.0052,-84.3965],[34.0097,-84.4004],[34.0152,-84.3995],
+      [34.0209,-84.3992],[34.0281,-84.4007],[34.0349,-84.4024],[34.0418,-84.4108],
+      [34.0738,-84.4379],[34.0758,-84.5437],
+      [33.9857,-84.553],[33.9289,-84.535],[33.8605,-84.534],
+      [33.8056,-84.505],[33.776,-84.5014],[33.774,-84.5364],
+      [33.7609,-84.5552],[33.8132,-84.4892]
+    ],
+    "Kennesaw": [
+      [34.0758,-84.5437],[34.0776,-84.6243],[34.0792,-84.7246],
+      [33.9857,-84.7393],[33.9289,-84.7235],[33.8605,-84.7246],
+      [33.8056,-84.6672],[33.776,-84.6014],[33.7609,-84.5552],
+      [33.774,-84.5364],[33.776,-84.5014],[33.8056,-84.505],
+      [33.8605,-84.534],[33.9289,-84.535],[33.9857,-84.553],
+      [34.0758,-84.5437]
+    ],
+    // Gwinnett County subdivisions
+    "North Gwinnett": [
+      [34.0844,-84.1139],[34.0333,-84.1277],[34.0052,-84.1804],[33.9926,-84.2028],
+      [33.982,-84.263],[33.9401,-84.2693],[33.9034,-84.235],
+      [33.925,-84.16],[33.96,-84.09],[33.99,-84.04],
+      [34.0248,-83.8601],[34.0576,-83.8467],[34.0985,-83.8297],[34.1265,-83.8204],
+      [34.1076,-83.8933],[34.1349,-83.9685],[34.1649,-84.0502],
+      [34.1278,-84.0932],[34.089,-84.1121],[34.0844,-84.1139]
+    ],
+    "Outlying Gwinnett County": [
+      [33.9034,-84.235],[33.8686,-84.1942],[33.8538,-84.1608],
+      [33.823,-84.1262],[33.7651,-84.0472],[33.8065,-83.9565],
+      [33.8843,-83.8564],[33.9388,-83.8056],[33.9492,-83.8134],
+      [33.9622,-83.8224],[33.9687,-83.8328],[33.9813,-83.8372],
+      [33.9878,-83.8443],[33.9905,-83.8494],[33.9926,-83.8545],
+      [34.0008,-83.8631],[34.0248,-83.8601],
+      [33.99,-84.04],[33.96,-84.09],[33.925,-84.16],
+      [33.9034,-84.235]
+    ],
+    // Fulton County subdivisions (9 submarkets)
+    "North Fulton": [
+      [34.178,-84.3398],[34.1531,-84.3597],[34.1191,-84.3778],[34.1082,-84.4117],
+      [34.0371,-84.4074],[34.0268,-84.4007],[34.0148,-84.4005],[34.005,-84.3962],
+      [33.9961,-84.3886],[33.9662,-84.3837],[33.9632,-84.3478],
+      [33.9579,-84.288],[33.9952,-84.2012],[34.0324,-84.157],
+      [34.0661,-84.1622],[34.0931,-84.2082],[34.1013,-84.236],
+      [34.1431,-84.2589],[34.178,-84.3398]
+    ],
+    "Sandy Springs": [
+      [33.9632,-84.3478],[33.9662,-84.3837],[33.887,-84.4445],
+      [33.881,-84.42],[33.878,-84.4],[33.875,-84.385],
+      [33.8663,-84.3482],[33.9108,-84.348],
+      [33.9611,-84.3477],[33.9632,-84.3478]
+    ],
+    "Buckhead": [
+      [33.8663,-84.3482],[33.875,-84.385],[33.878,-84.4],
+      [33.881,-84.42],[33.8611,-84.4545],
+      [33.84,-84.435],[33.82,-84.42],[33.81,-84.405],
+      [33.8046,-84.3482],[33.8391,-84.3485],[33.8663,-84.3482]
+    ],
+    "North Atlanta": [
+      [33.9108,-84.348],[33.8663,-84.3482],[33.8391,-84.3485],
+      [33.8046,-84.3482],[33.8046,-84.31],[33.82,-84.28],
+      [33.84,-84.26],[33.87,-84.24],[33.9034,-84.235],
+      [33.9296,-84.2645],[33.9549,-84.2737],[33.9579,-84.288],
+      [33.9632,-84.3478],[33.9611,-84.3477],[33.9108,-84.348]
+    ],
+    "MidtownAtlanta": [
+      [33.8046,-84.3482],[33.81,-84.405],
+      [33.795,-84.41],[33.785,-84.405],[33.775,-84.395],
+      [33.77,-84.38],[33.7655,-84.3492],[33.8046,-84.3482]
+    ],
+    "West Midtown": [
+      [33.81,-84.405],[33.82,-84.42],[33.84,-84.435],
+      [33.8611,-84.4545],[33.8076,-84.4965],
+      [33.79,-84.48],[33.775,-84.46],[33.7674,-84.45],
+      [33.76,-84.43],[33.775,-84.395],[33.785,-84.405],
+      [33.795,-84.41],[33.81,-84.405]
+    ],
+    "Downtown Atlanta": [
+      [33.77,-84.38],[33.775,-84.395],[33.76,-84.43],
+      [33.7504,-84.42],[33.744,-84.41],[33.74,-84.39],
+      [33.7218,-84.3494],[33.744,-84.3492],[33.7655,-84.3492],
+      [33.77,-84.38]
+    ],
+    "Eastside Atlanta": [
+      [33.8046,-84.31],[33.8046,-84.3482],[33.7655,-84.3492],
+      [33.744,-84.3492],[33.7008,-84.3495],
+      [33.7008,-84.31],[33.72,-84.28],[33.74,-84.26],
+      [33.76,-84.25],[33.78,-84.26],[33.8046,-84.31]
+    ],
+    "Westside Atlanta": [
+      [33.7674,-84.45],[33.775,-84.46],[33.79,-84.48],
+      [33.8076,-84.4965],[33.7674,-84.5449],[33.7504,-84.5677],
+      [33.703,-84.6253],[33.67,-84.58],[33.6449,-84.453],
+      [33.7218,-84.3494],[33.74,-84.39],[33.744,-84.41],
+      [33.7504,-84.42],[33.76,-84.43],[33.7674,-84.45]
+    ],
+    "South Atlanta": [
+      [33.7218,-84.3494],[33.744,-84.3492],[33.7008,-84.3495],
+      [33.7008,-84.31],[33.68,-84.28],[33.66,-84.22],
+      [33.6462,-84.1848],[33.6375,-84.2454],[33.6476,-84.3115],
+      [33.7008,-84.3495],[33.7218,-84.3494]
+    ],
+    "South Fulton": [
+      [33.6449,-84.453],[33.67,-84.58],[33.703,-84.6253],
+      [33.511,-84.7741],[33.5097,-84.6068],[33.5497,-84.4648],
+      [33.6449,-84.453]
+    ],
+    // DeKalb County subdivisions
+    "Decatur North Druid Hills": [
+      [33.8046,-84.31],[33.78,-84.26],[33.76,-84.25],
+      [33.74,-84.26],[33.72,-84.28],[33.7008,-84.31],
+      [33.7008,-84.24],[33.73,-84.2],[33.76,-84.18],
+      [33.79,-84.16],[33.81,-84.18],[33.82,-84.2],
+      [33.82,-84.28],[33.8046,-84.31]
+    ],
+    "Southeast DeKalb": [
+      [33.7008,-84.24],[33.7008,-84.31],[33.68,-84.28],
+      [33.66,-84.22],[33.6462,-84.1848],[33.6444,-84.1581],
+      [33.6356,-84.1399],[33.6245,-84.1239],[33.6538,-84.0949],
+      [33.7286,-84.0541],[33.7625,-84.0436],[33.76,-84.18],
+      [33.73,-84.2],[33.7008,-84.24]
+    ],
+    "Northlake": [
+      [33.9034,-84.235],[33.87,-84.24],[33.84,-84.26],
+      [33.82,-84.28],[33.82,-84.2],[33.81,-84.18],
+      [33.7946,-84.0929],[33.7984,-84.0972],[33.8254,-84.128],
+      [33.8399,-84.1454],[33.8557,-84.1656],[33.8648,-84.1807],
+      [33.8716,-84.1991],[33.8828,-84.2133],[33.908,-84.2446],
+      [33.9034,-84.235]
+    ]
+  };
+  // Center points for label placement and popup positioning
+  var costarCenters = {};
+  Object.keys(costarBoundaries).forEach(function(name) {
+    var pts = costarBoundaries[name];
+    var latSum = 0, lngSum = 0;
+    pts.forEach(function(p) { latSum += p[0]; lngSum += p[1]; });
+    costarCenters[name] = [latSum / pts.length, lngSum / pts.length];
+  });
+
+  // ── TILE LAYERS ──
+  var satLayer = L.tileLayer("https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}", {
+    attribution: "Google Maps", maxZoom: 20
+  });
+  var strLayer = L.tileLayer("https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}", {
+    attribution: "Google Maps", maxZoom: 20
+  });
+  var drkLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    attribution: "CARTO", subdomains: "abcd", maxZoom: 19
+  });
+  var baseLayers = { satellite: satLayer, street: strLayer, dark: drkLayer };
+  var curLayer = "satellite";
+
+  // ── MAP INITIALIZATION ──
+  var map = L.map("map", { center: [33.85, -84.27], zoom: 10, layers: [satLayer], zoomControl: false });
+  L.control.zoom({ position: "topright" }).addTo(map);
+
+  function switchLayer(name) {
+    map.removeLayer(baseLayers[curLayer]);
+    baseLayers[name].addTo(map);
+    curLayer = name;
+    document.querySelectorAll("#header .controls .btn").forEach(function(b) {
+      if (b.id.startsWith("btn-satellite") || b.id.startsWith("btn-street") || b.id.startsWith("btn-dark"))
+        b.classList.remove("active");
+    });
+    document.getElementById("btn-" + name).classList.add("active");
+    // Re-add overlays on top
+    if (transitOn) transitLayer.bringToFront();
+    if (activeOverlay) activeOverlay.bringToFront();
+  }
+  document.getElementById("btn-satellite").addEventListener("click", function() { switchLayer("satellite"); });
+  document.getElementById("btn-street").addEventListener("click", function() { switchLayer("street"); });
+  document.getElementById("btn-dark").addEventListener("click", function() { switchLayer("dark"); });
+  document.getElementById("btn-reset").addEventListener("click", function() { map.flyTo([33.85, -84.27], 10, {duration:1}); });
+
+  /* ── TRANSIT OVERLAY ── */
+  var transitLayer = L.tileLayer("https://mt1.google.com/vt/lyrs=transit&x={x}&y={y}&z={z}", {
+    attribution: "Google Maps", maxZoom: 20, opacity: 0.85
+  });
+  var transitOn = false;
+  document.getElementById("btn-transit").addEventListener("click", function() {
+    transitOn = !transitOn;
+    if (transitOn) {
+      transitLayer.addTo(map);
+      transitLayer.setZIndex(500); // above base, below markers
+      this.classList.add("active");
+    } else {
+      map.removeLayer(transitLayer);
+      this.classList.remove("active");
+    }
+  });
+
+  /* ── JUSTICE MAP TILE OVERLAY ── */
+  var activeOverlay = null;
+  var activeLayerName = null;
+  var overlayOpacity = 0.65;
+
+  function getGeoForZoom(z, isIncome) {
+    if (isIncome) {
+      return (z <= 10) ? "county" : "tract";
+    } else {
+      if (z <= 10) return "county";
+      else if (z <= 13) return "tract";
+      else return "block";
+    }
+  }
+
+  function createJusticeLayer(layerName) {
+    var isIncome = (layerName === "income");
+    var maxNative = isIncome ? 13 : 14;
+    var CustomLayer = L.TileLayer.extend({
+      getTileUrl: function(coords) {
+        var z = coords.z;
+        var geo = getGeoForZoom(z, isIncome);
+        return "https://maptile3.org/2020/" + geo + "/" + layerName + "/" + z + "/" + coords.x + "/" + coords.y + ".png";
+      }
+    });
+    return new CustomLayer("", {
+      opacity: overlayOpacity,
+      maxZoom: 19,
+      maxNativeZoom: maxNative,
+      errorTileUrl: ""
+    });
+  }
+
+  var prevZoom = map.getZoom();
+  map.on("zoomend", function() {
+    if (!activeOverlay || !activeLayerName) return;
+    var newZoom = map.getZoom();
+    var isIncome = (activeLayerName === "income");
+    var oldGeo = getGeoForZoom(prevZoom, isIncome);
+    var newGeo = getGeoForZoom(newZoom, isIncome);
+    if (oldGeo !== newGeo) {
+      var op = activeOverlay.options.opacity;
+      map.removeLayer(activeOverlay);
+      activeOverlay = createJusticeLayer(activeLayerName);
+      activeOverlay.setOpacity(op);
+      activeOverlay.addTo(map);
+      activeOverlay.bringToFront();
+    }
+    prevZoom = newZoom;
+  });
+
+  var legendData = {
+    income: {title:"Median Household Income",items:[
+      {color:"#67001f",label:"< $35k"},{color:"#d6604d",label:"$43k–$56k"},
+      {color:"#fddbc7",label:"$56k–$63k"},{color:"#d1e5f0",label:"$63k–$70k"},
+      {color:"#4393c3",label:"$80k–$93k"},{color:"#053061",label:"$115k+"}
+    ]},
+    black: {title:"% Black Population",items:[
+      {color:"#ffffcc",label:"0–3%"},{color:"#feb24c",label:"6–10%"},
+      {color:"#fd8d3c",label:"10–16%"},{color:"#fc4e2a",label:"16–27%"},
+      {color:"#e31a1c",label:"27–46%"},{color:"#800026",label:"76–100%"}
+    ]},
+    white: {title:"% White Population",items:[
+      {color:"#fff7f3",label:"0–11%"},{color:"#fcc5c0",label:"31–48%"},
+      {color:"#f768a1",label:"60–70%"},{color:"#dd3497",label:"70–78%"},
+      {color:"#ae017e",label:"78–85%"},{color:"#49006a",label:"91–100%"}
+    ]},
+    hispanic: {title:"% Hispanic Population",items:[
+      {color:"#fff7f3",label:"0–4%"},{color:"#fcc5c0",label:"6–10%"},
+      {color:"#fa9fb5",label:"10–16%"},{color:"#f768a1",label:"16–25%"},
+      {color:"#dd3497",label:"25–38%"},{color:"#ae017e",label:"38–59%"},
+      {color:"#7a0177",label:"59–84%"},{color:"#490061",label:"84–100%"}
+    ]},
+    asian: {title:"% Asian Population",items:[
+      {color:"#ffffe5",label:"0–1%"},{color:"#fee391",label:"1–2%"},
+      {color:"#fec44f",label:"2–4%"},{color:"#fe9929",label:"4–6%"},
+      {color:"#ec7014",label:"6–9%"},{color:"#cc4c02",label:"9–16%"},
+      {color:"#933404",label:"16–30%"},{color:"#662506",label:"30%+"}
+    ]},
+    nonwhite: {title:"% Non-White Population",items:[
+      {color:"#f0f0f0",label:"3–8%"},{color:"#d9d9d9",label:"8–19%"},
+      {color:"#bdbdbd",label:"19–34%"},{color:"#969696",label:"34–49%"},
+      {color:"#737373",label:"49–62%"},{color:"#525252",label:"62–74%"},
+      {color:"#252525",label:"74–85%"},{color:"#000000",label:"85–100%"}
+    ]},
+    multi: {title:"% Multi-Racial",items:[
+      {color:"#f7f4f9",label:"0–5%"},{color:"#d4b9da",label:"7–9%"},
+      {color:"#df65b0",label:"11–13%"},{color:"#e7298a",label:"13–15%"},
+      {color:"#ce1256",label:"15–19%"},{color:"#980043",label:"19–30%"},
+      {color:"#67001f",label:"30%+"}
+    ]},
+    plural: {title:"Racial Plurality",items:[
+      {color:"#fbb4b9",label:"White < 50%"},{color:"#ae017e",label:"White 90%+"},
+      {color:"#fc8d59",label:"Black < 50%"},{color:"#800026",label:"Black 90%+"},
+      {color:"#a6bddb",label:"Hispanic < 50%"},{color:"#253494",label:"Hispanic 90%+"},
+      {color:"#addd8e",label:"Asian < 50%"},{color:"#006837",label:"Asian 90%+"}
+    ]},
+    indian: {title:"% American Indian",items:[
+      {color:"#fff7ec",label:"0–0.2%"},{color:"#fdd49e",label:"0.35–0.5%"},
+      {color:"#fc8d59",label:"0.75–1%"},{color:"#ef6548",label:"1–1.5%"},
+      {color:"#d7301f",label:"1.5–2.5%"},{color:"#b30000",label:"2.5–4%"},
+      {color:"#7f0000",label:"4%+"}
+    ]}
+  };
+
+  function updateLegend(layerName) {
+    var box = document.getElementById("legend-box");
+    if (!layerName || !legendData[layerName]) {
+      box.innerHTML = '<h3>Submarket Types</h3>' +
+        '<div class="leg-item"><div class="leg-dot" style="background:#6366f1;"></div><span>Urban Core</span></div>' +
+        '<div class="leg-item"><div class="leg-dot" style="background:#a78bfa;"></div><span>Urban</span></div>' +
+        '<div class="leg-item"><div class="leg-dot" style="background:#34d399;"></div><span>Suburban — North</span></div>' +
+        '<div class="leg-item"><div class="leg-dot" style="background:#2dd4bf;"></div><span>Suburban — East</span></div>' +
+        '<div class="leg-item"><div class="leg-dot" style="background:#fbbf24;"></div><span>Suburban — West</span></div>' +
+        '<div class="leg-item"><div class="leg-dot" style="background:#fb923c;"></div><span>Suburban — South</span></div>';
+      box.classList.remove("open"); // auto-hide when no census overlay
+      return;
+    }
+    var d = legendData[layerName];
+    var h = '<h3>' + d.title + '</h3>';
+    d.items.forEach(function(it) {
+      h += '<div class="leg-item"><div class="leg-dot" style="background:' + it.color + ';border:1px solid rgba(255,255,255,0.2);"></div><span>' + it.label + '</span></div>';
+    });
+    box.innerHTML = h;
+    box.classList.add("open"); // auto-show when census overlay is active
+  }
+
+  /* ── COSTAR POLYGON OVERLAYS ── */
+  var costarPolygons = {};
+  var costarActive = true;
+
+  function createCostarPolygons() {
+    Object.keys(costarBoundaries).forEach(function(name) {
+      var coords = costarBoundaries[name];
+      var isCounty = name.indexOf("County") > -1;
+
+      var polygon = L.polygon(coords, {
+        color: isCounty ? "#3b9eff" : "#a78bfa",
+        weight: isCounty ? 1.5 : 2,
+        opacity: 0.5,
+        fillOpacity: 0.06,
+        fillColor: isCounty ? "#3b9eff" : "#a78bfa",
+        interactive: true
+      });
+
+      polygon.on("click", function() {
+        showCostarPopup(name, costarCenters[name]);
+      });
+
+      polygon.on("mouseover", function(e) {
+        this.setStyle({ fillOpacity: 0.18, weight: isCounty ? 2.5 : 3 });
+        this.bindTooltip(name, {
+          sticky: true, direction: "top", offset: [0, -10],
+          className: "costar-tooltip"
+        }).openTooltip(e.latlng);
+      });
+      polygon.on("mousemove", function(e) {
+        if (this.getTooltip()) this.getTooltip().setLatLng(e.latlng);
+      });
+      polygon.on("mouseout", function() {
+        this.setStyle({ fillOpacity: 0.06, weight: isCounty ? 1.5 : 2 });
+        this.unbindTooltip();
+      });
+
+      costarPolygons[name] = polygon;
+      if (costarActive) polygon.addTo(map);
+    });
+  }
+  createCostarPolygons();
+
+  function showCostarPopup(marketName, coords) {
+    var data = costarData[marketName];
+    if (!data) return;
+
+    var html = '<div class="costar-popup">';
+    html += '<h3>' + marketName + '</h3>';
+
+    // Stabilized Vacancy 5-year Average
+    html += '<div class="costar-section">';
+    html += '<div class="costar-label">Avg. Stabilized Vacancy (5Y)</div>';
+    var vacAvg = data.stab_vac_avg * 100;
+    html += '<div class="costar-value">' + vacAvg.toFixed(2) + '%</div>';
+    html += '</div>';
+
+    // Rent Projections Table
+    html += '<div class="costar-section">';
+    html += '<div class="costar-label">Rent Growth Projections</div>';
+    html += '<table class="rent-table"><thead><tr><th>Year</th><th>Est. Rent</th><th>YoY Growth</th></tr></thead><tbody>';
+    var rentYears = ["2026 EST", "2027", "2028", "2029", "2030", "2031"];
+    var prevRent = null;
+    rentYears.forEach(function(year) {
+      var rent = data.rents[year] || 0;
+      var yoyStr = "—";
+      if (prevRent !== null && prevRent > 0) {
+        var yoy = ((rent - prevRent) / prevRent) * 100;
+        yoyStr = (yoy >= 0 ? "+" : "") + yoy.toFixed(2) + "%";
+      }
+      html += '<tr><td>' + year + '</td><td>$' + rent.toFixed(0) + '</td><td>' + yoyStr + '</td></tr>';
+      prevRent = rent;
+    });
+    html += '</tbody></table>';
+    html += '<div class="costar-subvalue" style="margin-top:6px;">5Y Rent CAGR: <strong>' + (data.rent_cagr * 100).toFixed(2) + '%</strong></div>';
+    html += '</div>';
+
+    // Asset Value
+    html += '<div class="costar-section">';
+    html += '<div class="costar-label">Asset Value (2026 YTD)</div>';
+    var assetVal = data.asset_val;
+    var assetDisplay = assetVal >= 1e9 ? (assetVal / 1e9).toFixed(2) + 'B' : (assetVal / 1e6).toFixed(2) + 'M';
+    html += '<div class="costar-value">$' + assetDisplay + '</div>';
+    html += '</div>';
+
+    // Incoming Supply
+    html += '<div class="costar-section">';
+    html += '<div class="costar-label">Incoming Supply (% of Current Inv.)</div>';
+    var incomingSupply = (data.supply_pct * 100).toFixed(2);
+    html += '<div class="costar-value">' + incomingSupply + '%</div>';
+    html += '<div class="costar-subvalue">2026 Inv: ' + Math.round(data.inv_2026).toLocaleString() + ' units &rarr; 2031 Est: ' + Math.round(data.inv_2031).toLocaleString() + '</div>';
+    if (data.uc_units > 0) {
+      html += '<div class="costar-subvalue">Under Construction: ' + Math.round(data.uc_units).toLocaleString() + ' units (' + (data.uc_pct * 100).toFixed(1) + '% of inv.)</div>';
+    }
+    html += '</div>';
+
+    html += '</div>';
+
+    L.popup({className: "costar-popup-wrapper"})
+      .setLatLng(coords)
+      .setContent(html)
+      .openOn(map);
+  }
+
+  /* ── SUBMARKET MARKERS (EXISTING) ── */
+  var submarkets = [
+    {id:"downtown",     name:"Downtown",                           lat:33.7490,lng:-84.3880,county:"Fulton County",  type:"Urban Core",       color:"#6366f1"},
+    {id:"midtown",      name:"Midtown",                            lat:33.7879,lng:-84.3879,county:"Fulton County",  type:"Urban Core",       color:"#6366f1"},
+    {id:"buckhead",     name:"Buckhead",                           lat:33.8343,lng:-84.3693,county:"Fulton County",  type:"Urban Core",       color:"#6366f1"},
+
+    {id:"decaturnd",    name:"Decatur North Druid Hills",          lat:33.7998,lng:-84.2876,county:"DeKalb County",  type:"Urban",            color:"#a78bfa"},
+    {id:"eastside",     name:"Eastside Atlanta",                   lat:33.7731,lng:-84.3217,county:"DeKalb County",  type:"Urban",            color:"#a78bfa"},
+    {id:"southatl",     name:"South Atlanta",                      lat:33.6679,lng:-84.4327,county:"Clayton County", type:"Urban",            color:"#a78bfa"},
+    {id:"westmidtown",  name:"West Midtown",                       lat:33.7816,lng:-84.4298,county:"Fulton County",  type:"Urban",            color:"#a78bfa"},
+    {id:"wsideatl",     name:"Westside Atlanta",                   lat:33.7392,lng:-84.4832,county:"Fulton County",  type:"Urban",            color:"#a78bfa"},
+    {id:"smyrna",       name:"Smyrna / Vinings",                   lat:33.8839,lng:-84.5144,county:"Cobb County",    type:"Urban",            color:"#a78bfa"},
+
+    {id:"sandysprings", name:"Sandy Springs",                      lat:33.9304,lng:-84.3733,county:"Fulton County",  type:"Suburban — North",color:"#34d399"},
+    {id:"dunwoody",     name:"Dunwoody",                           lat:33.9462,lng:-84.3346,county:"DeKalb County",  type:"Suburban — North",color:"#34d399"},
+    {id:"roswell",      name:"Roswell",                            lat:34.0234,lng:-84.3616,county:"Fulton County",  type:"Suburban — North",color:"#34d399"},
+    {id:"alpharetta",   name:"Alpharetta",                         lat:34.0754,lng:-84.2941,county:"Fulton County",  type:"Suburban — North",color:"#34d399"},
+    {id:"johnscreek",   name:"Johns Creek",                        lat:34.0289,lng:-84.1986,county:"Fulton County",  type:"Suburban — North",color:"#34d399"},
+    {id:"milton",       name:"Milton",                             lat:34.1326,lng:-84.3005,county:"Fulton County",  type:"Suburban — North",color:"#34d399"},
+    {id:"cumming",      name:"Cumming",                            lat:34.2073,lng:-84.1402,county:"Forsyth County", type:"Suburban — North",color:"#34d399"},
+    {id:"ptcorners",    name:"Peachtree Corners",                  lat:33.9701,lng:-84.2215,county:"Gwinnett County",type:"Suburban — North",color:"#34d399"},
+    {id:"suwanee",      name:"Suwanee",                            lat:34.0515,lng:-84.0713,county:"Gwinnett County",type:"Suburban — North",color:"#34d399"},
+    {id:"buford",       name:"Buford",                             lat:34.1207,lng:-84.0043,county:"Gwinnett County",type:"Suburban — North",color:"#34d399"},
+    {id:"woodstock",    name:"Woodstock",                          lat:34.1015,lng:-84.5194,county:"Cherokee County",type:"Suburban — North",color:"#34d399"},
+    {id:"canton",       name:"Canton",                             lat:34.2368,lng:-84.4908,county:"Cherokee County",type:"Suburban — North",color:"#34d399"},
+
+    {id:"tucker",       name:"Tucker",                             lat:33.8554,lng:-84.2171,county:"DeKalb County",  type:"Suburban — East", color:"#2dd4bf"},
+    {id:"stonemtn",     name:"Stone Mountain",                     lat:33.8081,lng:-84.1702,county:"DeKalb County",  type:"Suburban — East", color:"#2dd4bf"},
+    {id:"norcross",     name:"Norcross",                           lat:33.9412,lng:-84.2135,county:"Gwinnett County",type:"Suburban — East", color:"#2dd4bf"},
+    {id:"duluth",       name:"Duluth",                             lat:34.0029,lng:-84.1446,county:"Gwinnett County",type:"Suburban — East", color:"#2dd4bf"},
+    {id:"lawrenceville",name:"Lawrenceville",                      lat:33.9562,lng:-83.9880,county:"Gwinnett County",type:"Suburban — East", color:"#2dd4bf"},
+    {id:"lilburn",      name:"Lilburn",                            lat:33.8901,lng:-84.1427,county:"Gwinnett County",type:"Suburban — East", color:"#2dd4bf"},
+    {id:"snellville",   name:"Snellville",                         lat:33.8573,lng:-84.0019,county:"Gwinnett County",type:"Suburban — East", color:"#2dd4bf"},
+    {id:"conyers",      name:"Conyers",                            lat:33.6676,lng:-84.0177,county:"Rockdale County",type:"Suburban — East", color:"#2dd4bf"},
+    {id:"covington",    name:"Covington",                          lat:33.5968,lng:-83.8602,county:"Newton County",  type:"Suburban — East", color:"#2dd4bf"},
+    {id:"loganville",   name:"Loganville",                         lat:33.8390,lng:-83.9007,county:"Walton County",  type:"Suburban — East", color:"#2dd4bf"},
+
+    {id:"marietta",     name:"Marietta",                           lat:33.9526,lng:-84.5499,county:"Cobb County",    type:"Suburban — West", color:"#fbbf24"},
+    {id:"kennesaw",     name:"Kennesaw",                           lat:34.0234,lng:-84.6155,county:"Cobb County",    type:"Suburban — West", color:"#fbbf24"},
+    {id:"eastcobb",     name:"East Cobb",                          lat:33.9756,lng:-84.4592,county:"Cobb County",    type:"Suburban — West", color:"#fbbf24"},
+    {id:"acworth",      name:"Acworth",                            lat:34.0651,lng:-84.6769,county:"Cobb County",    type:"Suburban — West", color:"#fbbf24"},
+    {id:"powderspgs",   name:"Powder Springs",                     lat:33.8595,lng:-84.6838,county:"Cobb County",    type:"Suburban — West", color:"#fbbf24"},
+    {id:"austell",      name:"Austell / Mableton",                 lat:33.8126,lng:-84.6344,county:"Cobb County",    type:"Suburban — West", color:"#fbbf24"},
+    {id:"douglasville", name:"Douglasville",                       lat:33.7515,lng:-84.7477,county:"Douglas County", type:"Suburban — West", color:"#fbbf24"},
+    {id:"villarica",    name:"Villa Rica",                         lat:33.7312,lng:-84.9185,county:"Carroll County", type:"Suburban — West", color:"#fbbf24"},
+    {id:"dallas",       name:"Dallas / Hiram",                     lat:33.9243,lng:-84.8412,county:"Paulding County",type:"Suburban — West", color:"#fbbf24"},
+
+    {id:"southfulton",  name:"South Fulton",                       lat:33.6268,lng:-84.5782,county:"Fulton County",  type:"Suburban — South",color:"#fb923c"},
+    {id:"forestpark",   name:"Forest Park / Morrow",               lat:33.6221,lng:-84.3691,county:"Clayton County", type:"Suburban — South",color:"#fb923c"},
+    {id:"jonesboro",    name:"Jonesboro",                          lat:33.5215,lng:-84.3538,county:"Clayton County", type:"Suburban — South",color:"#fb923c"},
+    {id:"riverdale",    name:"Riverdale",                          lat:33.5724,lng:-84.4133,county:"Clayton County", type:"Suburban — South",color:"#fb923c"},
+    {id:"mcdonough",    name:"McDonough",                          lat:33.4473,lng:-84.1469,county:"Henry County",   type:"Suburban — South",color:"#fb923c"},
+    {id:"stockbridge",  name:"Stockbridge",                        lat:33.5443,lng:-84.2338,county:"Henry County",   type:"Suburban — South",color:"#fb923c"},
+    {id:"hampton",      name:"Hampton / Locust Grove",             lat:33.3876,lng:-84.2821,county:"Henry County",   type:"Suburban — South",color:"#fb923c"},
+    {id:"fayetteville", name:"Fayetteville",                       lat:33.4487,lng:-84.4549,county:"Fayette County", type:"Suburban — South",color:"#fb923c"},
+    {id:"ptcity",       name:"Peachtree City",                     lat:33.3968,lng:-84.5646,county:"Fayette County", type:"Suburban — South",color:"#fb923c"},
+    {id:"newnan",       name:"Newnan",                             lat:33.3807,lng:-84.7997,county:"Coweta County",  type:"Suburban — South",color:"#fb923c"}
+  ];
+
+  var groupOrder = [
+    "Urban Core", "Urban",
+    "Suburban — North", "Suburban — East",
+    "Suburban — West", "Suburban — South"
+  ];
+
+  /* ── MARKERS ── */
+  submarkets.forEach(function(sm) {
+    var sz = sm.type === "Urban Core" ? 16 : (sm.type === "Urban" ? 14 : 12);
+    var html = '<div class="cmarker" data-id="' + sm.id + '" style="width:' + sz + 'px;height:' + sz + 'px;background:' + sm.color + ';"></div>';
+    var icon = L.divIcon({ className: "", html: html, iconSize: [sz, sz], iconAnchor: [sz/2, sz/2] });
+    var marker = L.marker([sm.lat, sm.lng], { icon: icon, zIndexOffset: 1000 }).addTo(map);
+    marker.bindTooltip(sm.name, { direction: "top", offset: [0, -10], className: "leaflet-tooltip-custom" });
+    marker.on("click", function() { openPanel(sm.id); });
+    sm._marker = marker;
+  });
+
+  /* ── SIDEBAR BUILD ── */
+  function buildList(filter) {
+    var el = document.getElementById("sm-list");
+    el.innerHTML = "";
+    var lf = (filter || "").toLowerCase();
+    var groups = {};
+    submarkets.forEach(function(sm) {
+      if (lf && sm.name.toLowerCase().indexOf(lf) === -1 && sm.county.toLowerCase().indexOf(lf) === -1) return;
+      if (!groups[sm.type]) groups[sm.type] = [];
+      groups[sm.type].push(sm);
+    });
+    groupOrder.forEach(function(g) {
+      if (!groups[g]) return;
+      var lbl = document.createElement("div");
+      lbl.className = "sm-group";
+      lbl.textContent = g;
+      el.appendChild(lbl);
+      groups[g].forEach(function(sm) {
+        var row = document.createElement("div");
+        row.className = "sm-item";
+        row.setAttribute("data-id", sm.id);
+        row.innerHTML = '<div class="sm-dot" style="background:' + sm.color + ';"></div><div class="sm-info"><div class="sm-name">' + sm.name + '</div><div class="sm-county">' + sm.county + '</div></div>';
+        row.addEventListener("click", function() {
+          map.flyTo([sm.lat, sm.lng], 13, {duration: 0.8});
+          openPanel(sm.id);
+        });
+        el.appendChild(row);
+      });
+    });
+  }
+  buildList();
+
+  /* ── SIDEBAR TABS ── */
+  var activeTab = "markets";
+  document.getElementById("tab-markets").addEventListener("click", function() { switchTab("markets"); });
+  document.getElementById("tab-poi").addEventListener("click", function() { switchTab("poi"); });
+  document.getElementById("tab-saved").addEventListener("click", function() { switchTab("saved"); });
+  function switchTab(tab) {
+    activeTab = tab;
+    document.querySelectorAll(".stab").forEach(function(b) { b.classList.remove("active"); });
+    document.getElementById("tab-" + tab).classList.add("active");
+    document.querySelectorAll(".tab-content").forEach(function(c) { c.classList.remove("active"); });
+    document.getElementById("tab-" + tab + "-content").classList.add("active");
+    document.getElementById("search-input").value = "";
+    document.getElementById("geo-results").style.display = "none";
+    closePOIPicker();
+    closeSavedPicker();
+    if (tab === "markets") buildList();
+  }
+
+  /* ── SAVED LAYERS SYSTEM ── */
+  var savedLayers = [];
+  var layerColors = ["#3b9eff","#34d399","#fbbf24","#fb923c","#a78bfa","#2dd4bf","#fb7185","#6366f1","#ef4444","#eab308","#06b6d4","#84cc16"];
+  var layerIcons = ["●","▲","■","★","◆","⬟","📍","🏠","🏢","🏗️","🏘️","💰","🔑","📌","🎯","🏪","🏥","⛪","🍽️","🌳","🚉","✈️","🅿️","⚡"];
+  var layerIdCounter = 0;
+  var savedPickerTarget = null; // {layerId, placeIdx} or {layerId} for layer-level
+
+  /* ── PERSISTENCE ── */
+  function saveState() {
+    try {
+      var layerData = savedLayers.map(function(l) {
+        return { id: l.id, name: l.name, color: l.color, icon: l.icon, visible: l.visible, open: l.open, places: l.places };
+      });
+      var poiData = poiCategories.map(function(c) {
+        return { id: c.id, name: c.name, icon: c.icon, color: c.color, visible: c.visible, open: c.open, points: c.points.map(function(p) { return { name: p.name, lat: p.lat, lng: p.lng, address: p.address, fields: p.fields || [] }; }) };
+      });
+      localStorage.setItem("atl_savedLayers", JSON.stringify(layerData));
+      localStorage.setItem("atl_layerIdCounter", layerIdCounter);
+      localStorage.setItem("atl_poiCategories", JSON.stringify(poiData));
+      localStorage.setItem("atl_poiCatIdCounter", poiCatIdCounter);
+      localStorage.setItem("atl_poiDataVersion", POI_DATA_VERSION);
+    } catch (e) { /* storage full or unavailable */ }
+  }
+
+  function loadState() {
+    try {
+      var ld = localStorage.getItem("atl_savedLayers");
+      var pd = localStorage.getItem("atl_poiCategories");
+      if (ld) {
+        var layerData = JSON.parse(ld);
+        layerIdCounter = parseInt(localStorage.getItem("atl_layerIdCounter")) || 0;
+        layerData.forEach(function(l) {
+          var layer = { id: l.id, name: l.name, color: l.color, icon: l.icon, visible: l.visible, open: l.open, places: l.places || [], mapMarkers: [] };
+          layer.places.forEach(function(p) {
+            if (!p.fields) p.fields = [];
+            var ic = p.icon || layer.icon;
+            var cl = p.color || layer.color;
+            var marker = L.marker([p.lat, p.lng], { icon: makeSavedMarkerIcon(cl, ic) });
+            var pi = layer.places.indexOf(p);
+            marker.bindPopup(buildPlacePopupEl(p, layer.id, pi), { maxWidth: 300 });
+            if (layer.visible) marker.addTo(map);
+            layer.mapMarkers.push(marker);
+          });
+          savedLayers.push(layer);
+        });
+        renderSavedLayers();
+        return true; // had saved data
+      }
+    } catch (e) { /* parse error or unavailable */ }
+    return false;
+  }
+
+  function loadPOIState() {
+    try {
+      var savedVer = parseInt(localStorage.getItem("atl_poiDataVersion")) || 0;
+      if (savedVer < POI_DATA_VERSION) {
+        localStorage.removeItem("atl_poiCategories");
+        localStorage.removeItem("atl_poiCatIdCounter");
+        localStorage.setItem("atl_poiDataVersion", POI_DATA_VERSION);
+        return false; // force re-init with new defaults
+      }
+      var pd = localStorage.getItem("atl_poiCategories");
+      if (pd) {
+        var poiData = JSON.parse(pd);
+        poiCatIdCounter = parseInt(localStorage.getItem("atl_poiCatIdCounter")) || 0;
+        poiCategories = [];
+        poiData.forEach(function(c) {
+          var cat = { id: c.id, name: c.name, icon: c.icon, color: c.color, visible: c.visible, open: c.open, points: c.points || [], markers: [] };
+          cat.points.forEach(function(p, pi) {
+            if (!p.fields) p.fields = [];
+            var iconHtml = '<div style="background:' + cat.color + ';width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.4);">' + cat.icon + '</div>';
+            var marker = L.marker([p.lat, p.lng], {
+              icon: L.divIcon({ className: "", html: iconHtml, iconSize: [26, 26], iconAnchor: [13, 13] })
+            });
+            marker.bindPopup(buildPOIPopupEl(p, cat.id, pi), { maxWidth: 300 });
+            if (cat.visible) marker.addTo(map);
+            cat.markers.push(marker);
+          });
+          poiCategories.push(cat);
+        });
+        renderPOI();
+        return true;
+      }
+    } catch (e) { /* parse error */ }
+    return false;
+  }
+
+  function createLayer(name) {
+    var layer = {
+      id: ++layerIdCounter,
+      name: name || "Layer " + layerIdCounter,
+      color: layerColors[(layerIdCounter - 1) % layerColors.length],
+      icon: "●",
+      visible: true,
+      open: true,
+      places: [],
+      mapMarkers: []
+    };
+    savedLayers.push(layer);
+    renderSavedLayers();
+    saveState();
+    return layer;
+  }
+
+  function deleteLayer(layerId) {
+    var idx = savedLayers.findIndex(function(l) { return l.id === layerId; });
+    if (idx === -1) return;
+    savedLayers[idx].mapMarkers.forEach(function(m) { map.removeLayer(m); });
+    savedLayers.splice(idx, 1);
+    renderSavedLayers();
+    saveState();
+  }
+
+  function toggleLayerVis(layerId) {
+    var layer = savedLayers.find(function(l) { return l.id === layerId; });
+    if (!layer) return;
+    layer.visible = !layer.visible;
+    layer.mapMarkers.forEach(function(m) {
+      if (layer.visible) m.addTo(map); else map.removeLayer(m);
+    });
+    renderSavedLayers();
+    saveState();
+  }
+
+  function makeSavedMarkerIcon(color, icon) {
+    var isShape = "●▲■★◆⬟".indexOf(icon) !== -1;
+    if (isShape) {
+      return L.divIcon({ className: "", html: '<div style="color:' + color + ';font-size:20px;line-height:1;text-shadow:0 0 3px rgba(0,0,0,0.6),0 1px 2px rgba(0,0,0,0.4);text-align:center;">' + icon + '</div>', iconSize: [22, 22], iconAnchor: [11, 11] });
+    }
+    return L.divIcon({ className: "", html: '<div style="background:' + color + ';width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.4);">' + icon + '</div>', iconSize: [26, 26], iconAnchor: [13, 13] });
+  }
+
+  function buildPlacePopupEl(place, layerId, placeIdx) {
+    var div = document.createElement("div");
+    div.style.cssText = "font:400 13px/1.5 IBM Plex Sans,sans-serif;max-width:280px;color:#e2e8f0;";
+    div.innerHTML = '<strong style="font-weight:600;color:#fff;">' + place.name + '</strong><br><span style="font-size:11px;color:#94a3b8;">' + place.address + '</span>';
+    // Show existing fields
+    if (place.fields && place.fields.length > 0) {
+      var fieldsDiv = document.createElement("div");
+      fieldsDiv.style.cssText = "margin-top:6px;border-top:1px solid rgba(255,255,255,0.1);padding-top:6px;";
+      place.fields.forEach(function(f) {
+        var row = document.createElement("div");
+        row.style.cssText = "display:flex;justify-content:space-between;font-size:11px;padding:2px 0;";
+        row.innerHTML = '<span style="color:#94a3b8;">' + f.label + '</span><span style="font-weight:600;color:#fff;">' + f.value + '</span>';
+        fieldsDiv.appendChild(row);
+      });
+      div.appendChild(fieldsDiv);
+    }
+    // Edit Fields button
+    var btnRow = document.createElement("div");
+    btnRow.style.cssText = "margin-top:8px;border-top:1px solid rgba(255,255,255,0.1);padding-top:8px;display:flex;justify-content:flex-end;";
+    var editBtn = document.createElement("button");
+    editBtn.innerHTML = "✏️ Edit Info";
+    editBtn.style.cssText = "font-family:IBM Plex Sans,sans-serif;font-size:12px;font-weight:600;padding:5px 14px;border-radius:5px;border:none;background:#3b9eff;color:#fff;cursor:pointer;display:flex;align-items:center;gap:4px;";
+    editBtn.addEventListener("click", function(e) {
+      e.stopPropagation();
+      e.preventDefault();
+      map.closePopup();
+      openFieldsModal(layerId, placeIdx);
+    });
+    btnRow.appendChild(editBtn);
+    div.appendChild(btnRow);
+    return div;
+  }
+
+  function addPlaceToLayer(layerId, place) {
+    var layer = savedLayers.find(function(l) { return l.id === layerId; });
+    if (!layer) return;
+    if (!place.icon) place.icon = null; // null = inherit from layer
+    if (!place.color) place.color = null;
+    if (!place.fields) place.fields = [];
+    layer.places.push(place);
+    var placeIdx = layer.places.length - 1;
+    var ic = place.icon || layer.icon;
+    var cl = place.color || layer.color;
+    var marker = L.marker([place.lat, place.lng], { icon: makeSavedMarkerIcon(cl, ic) });
+    marker.bindPopup(buildPlacePopupEl(place, layerId, placeIdx), { maxWidth: 300 });
+    if (layer.visible) marker.addTo(map);
+    layer.mapMarkers.push(marker);
+    renderSavedLayers();
+    saveState();
+  }
+
+  function removePlaceFromLayer(layerId, placeIdx) {
+    var layer = savedLayers.find(function(l) { return l.id === layerId; });
+    if (!layer) return;
+    map.removeLayer(layer.mapMarkers[placeIdx]);
+    layer.places.splice(placeIdx, 1);
+    layer.mapMarkers.splice(placeIdx, 1);
+    renderSavedLayers();
+    saveState();
+  }
+
+  function refreshSavedLayerMarkers(layer) {
+    layer.mapMarkers.forEach(function(m) { map.removeLayer(m); });
+    layer.mapMarkers = [];
+    layer.places.forEach(function(p, pi) {
+      var ic = p.icon || layer.icon;
+      var cl = p.color || layer.color;
+      var marker = L.marker([p.lat, p.lng], { icon: makeSavedMarkerIcon(cl, ic) });
+      marker.bindPopup(buildPlacePopupEl(p, layer.id, pi), { maxWidth: 300 });
+      if (layer.visible) marker.addTo(map);
+      layer.mapMarkers.push(marker);
+    });
+    saveState();
+  }
+
+  function closeSavedPicker() {
+    var pk = document.getElementById("saved-picker");
+    if (pk) pk.classList.remove("show");
+    savedPickerTarget = null;
+  }
+
+  function openFieldsModal(layerId, placeIdx) {
+    var layer = savedLayers.find(function(l) { return l.id === layerId; });
+    if (!layer) return;
+    var place = layer.places[placeIdx];
+    if (!place) return;
+    if (!place.fields) place.fields = [];
+
+    // Remove existing modal if any
+    var existing = document.querySelector(".fields-modal-overlay");
+    if (existing) existing.remove();
+
+    var overlay = document.createElement("div");
+    overlay.className = "fields-modal-overlay";
+
+    function renderModal() {
+      var fieldsHtml = '';
+      place.fields.forEach(function(f, fi) {
+        fieldsHtml += '<div class="fm-row" data-fi="' + fi + '">' +
+          '<input class="fm-label" placeholder="Label" value="' + (f.label || '').replace(/"/g, '&quot;') + '" />' +
+          '<input class="fm-value" placeholder="Value" value="' + (f.value || '').replace(/"/g, '&quot;') + '" />' +
+          '<span class="fm-del" title="Remove field">✕</span></div>';
+      });
+
+      var modal = '<div class="fields-modal">' +
+        '<h3>' + place.name + '</h3>' +
+        '<div class="fm-addr">' + place.address + '</div>' +
+        '<div class="fm-fields">' + (fieldsHtml || '<div style="font-size:11px;color:var(--text-dim);padding:4px 0;">No fields yet. Click "+ Add Field" below.</div>') + '</div>' +
+        '<div class="fm-actions">' +
+        '<button class="btn fm-add-btn">+ Add Field</button>' +
+        '<button class="btn fm-done-btn" style="background:var(--accent);border-color:var(--accent);color:#fff;">Done</button>' +
+        '</div></div>';
+      overlay.innerHTML = modal;
+
+      // Wire up events
+      overlay.querySelectorAll(".fm-row").forEach(function(row) {
+        var fi = parseInt(row.getAttribute("data-fi"));
+        row.querySelector(".fm-label").addEventListener("input", function() {
+          place.fields[fi].label = this.value;
+        });
+        row.querySelector(".fm-value").addEventListener("input", function() {
+          place.fields[fi].value = this.value;
+        });
+        row.querySelector(".fm-del").addEventListener("click", function() {
+          place.fields.splice(fi, 1);
+          renderModal();
+        });
+      });
+
+      overlay.querySelector(".fm-add-btn").addEventListener("click", function() {
+        place.fields.push({ label: "", value: "" });
+        renderModal();
+        // Focus the new label input
+        var rows = overlay.querySelectorAll(".fm-row");
+        if (rows.length > 0) rows[rows.length - 1].querySelector(".fm-label").focus();
+      });
+
+      overlay.querySelector(".fm-done-btn").addEventListener("click", function() {
+        // Remove empty fields
+        place.fields = place.fields.filter(function(f) { return f.label.trim() || f.value.trim(); });
+        // Refresh marker popup
+        refreshSavedLayerMarkers(layer);
+        renderSavedLayers();
+        overlay.remove();
+      });
+    }
+
+    renderModal();
+
+    // Close on overlay click
+    overlay.addEventListener("click", function(e) {
+      if (e.target === overlay) {
+        place.fields = place.fields.filter(function(f) { return f.label.trim() || f.value.trim(); });
+        refreshSavedLayerMarkers(layer);
+        renderSavedLayers();
+        overlay.remove();
+      }
+    });
+
+    document.body.appendChild(overlay);
+  }
+
+  function showSavedPicker(layerId, placeIdx) {
+    var layer = savedLayers.find(function(l) { return l.id === layerId; });
+    if (!layer) return;
+    var isPlace = (placeIdx !== undefined && placeIdx !== null);
+    savedPickerTarget = { layerId: layerId, placeIdx: isPlace ? placeIdx : null };
+    var curColor = isPlace ? (layer.places[placeIdx].color || layer.color) : layer.color;
+    var curIcon = isPlace ? (layer.places[placeIdx].icon || layer.icon) : layer.icon;
+
+    var pk = document.getElementById("saved-picker");
+    var colorsHtml = '';
+    layerColors.forEach(function(c) {
+      colorsHtml += '<div class="poi-picker-swatch' + (c === curColor ? ' sel' : '') + '" style="background:' + c + ';" data-color="' + c + '"></div>';
+    });
+    var iconsHtml = '';
+    layerIcons.forEach(function(ic) {
+      iconsHtml += '<div class="poi-picker-icon' + (ic === curIcon ? ' sel' : '') + '" data-icon="' + ic + '">' + ic + '</div>';
+    });
+    pk.innerHTML = '<div style="display:flex;justify-content:flex-end;margin-bottom:4px;"><span class="picker-close" style="cursor:pointer;font-size:14px;color:var(--text-dim);padding:2px 4px;line-height:1;" title="Close">✕</span></div>' +
+      '<div class="poi-picker-label">Color</div><div class="poi-picker-row">' + colorsHtml + '</div>' +
+      '<div class="poi-picker-label">Icon</div><div class="poi-picker-row">' + iconsHtml + '</div>';
+    pk.classList.add("show");
+
+    pk.querySelector(".picker-close").addEventListener("click", function(e) {
+      e.stopPropagation();
+      closeSavedPicker();
+    });
+
+    pk.querySelectorAll(".poi-picker-swatch").forEach(function(sw) {
+      sw.addEventListener("click", function(e) {
+        e.stopPropagation();
+        var col = this.getAttribute("data-color");
+        if (isPlace) { layer.places[placeIdx].color = col; }
+        else { layer.color = col; }
+        refreshSavedLayerMarkers(layer);
+        showSavedPicker(layerId, placeIdx);
+        renderSavedLayers();
+      });
+    });
+    pk.querySelectorAll(".poi-picker-icon").forEach(function(ic) {
+      ic.addEventListener("click", function(e) {
+        e.stopPropagation();
+        var icon = this.getAttribute("data-icon");
+        if (isPlace) { layer.places[placeIdx].icon = icon; }
+        else { layer.icon = icon; }
+        refreshSavedLayerMarkers(layer);
+        showSavedPicker(layerId, placeIdx);
+        renderSavedLayers();
+      });
+    });
+  }
+
+  function renderSavedLayers() {
+    var el = document.getElementById("saved-layers");
+    el.innerHTML = "";
+    if (savedLayers.length === 0) {
+      el.innerHTML = '<div style="padding:24px 20px;text-align:center;color:var(--text-dim);font-size:12px;">No saved layers yet.<br>Create a layer and search for places to add.</div>';
+      return;
+    }
+    savedLayers.forEach(function(layer) {
+      var div = document.createElement("div");
+      div.className = "saved-layer" + (layer.open ? " open" : "");
+      div.setAttribute("data-layer-id", layer.id);
+
+      var hdr = document.createElement("div");
+      hdr.className = "saved-layer-hdr";
+      hdr.innerHTML = '<span class="layer-expand">▶</span>' +
+        '<div class="poi-cat-icon" style="background:' + layer.color + ';width:22px;height:22px;font-size:12px;" title="Change icon/color">' + layer.icon + '</div>' +
+        '<input class="layer-name" value="' + layer.name.replace(/"/g, '&quot;') + '" readonly />' +
+        '<span class="layer-count">' + layer.places.length + '</span>' +
+        '<button class="layer-vis ' + (layer.visible ? "on" : "") + '" title="Toggle visibility">' + (layer.visible ? "👁" : "👁‍🗨") + '</button>' +
+        '<button class="layer-del" title="Delete layer">✕</button>';
+      div.appendChild(hdr);
+
+      // Expand/collapse
+      hdr.querySelector(".layer-expand").addEventListener("click", function(e) {
+        e.stopPropagation();
+        layer.open = !layer.open;
+        renderSavedLayers();
+      });
+
+      // Icon/color picker for layer
+      hdr.querySelector(".poi-cat-icon").addEventListener("click", function(e) {
+        e.stopPropagation();
+        if (savedPickerTarget && savedPickerTarget.layerId === layer.id && savedPickerTarget.placeIdx === null) {
+          closeSavedPicker();
+        } else {
+          showSavedPicker(layer.id);
+        }
+      });
+
+      // Double-click to edit name
+      var nameInput = hdr.querySelector(".layer-name");
+      nameInput.addEventListener("dblclick", function(e) {
+        e.stopPropagation();
+        this.removeAttribute("readonly");
+        this.focus();
+        this.select();
+      });
+      nameInput.addEventListener("blur", function() {
+        this.setAttribute("readonly", "");
+        layer.name = this.value.trim() || layer.name;
+        saveState();
+      });
+      nameInput.addEventListener("keydown", function(e) {
+        if (e.key === "Enter") { this.blur(); }
+        e.stopPropagation();
+      });
+      nameInput.addEventListener("click", function(e) { e.stopPropagation(); });
+
+      // Visibility toggle
+      hdr.querySelector(".layer-vis").addEventListener("click", function(e) {
+        e.stopPropagation();
+        toggleLayerVis(layer.id);
+      });
+
+      // Delete
+      hdr.querySelector(".layer-del").addEventListener("click", function(e) {
+        e.stopPropagation();
+        deleteLayer(layer.id);
+      });
+
+      // Places list
+      var placesDiv = document.createElement("div");
+      placesDiv.className = "layer-places";
+      if (layer.places.length === 0) {
+        placesDiv.innerHTML = '<div style="font-size:11px;color:var(--text-dim);padding:4px 0;">Search for a place and click + to add it here.</div>';
+      } else {
+        layer.places.forEach(function(p, pi) {
+          var pEl = document.createElement("div");
+          pEl.className = "saved-place";
+          var pIcon = p.icon || layer.icon;
+          var fieldCount = (p.fields && p.fields.length > 0) ? ' <span style="font-size:9px;color:var(--accent);vertical-align:middle;">(' + p.fields.length + ')</span>' : '';
+          pEl.innerHTML = '<span class="sp-icon" title="Change icon" style="cursor:pointer;font-size:14px;">' + pIcon + '</span> <span class="sp-name">' + p.name + fieldCount + '</span><span class="sp-info" title="Edit info fields">📝</span><span class="sp-remove" title="Remove">✕</span>';
+          pEl.querySelector(".sp-name").addEventListener("click", function(e) {
+            map.flyTo([p.lat, p.lng], 16, { duration: 0.8 });
+            if (layer.mapMarkers[pi]) layer.mapMarkers[pi].openPopup();
+          });
+          pEl.querySelector(".sp-icon").addEventListener("click", function(e) {
+            e.stopPropagation();
+            if (savedPickerTarget && savedPickerTarget.layerId === layer.id && savedPickerTarget.placeIdx === pi) {
+              closeSavedPicker();
+            } else {
+              showSavedPicker(layer.id, pi);
+            }
+          });
+          pEl.querySelector(".sp-info").addEventListener("click", function(e) {
+            e.stopPropagation();
+            openFieldsModal(layer.id, pi);
+          });
+          pEl.querySelector(".sp-remove").addEventListener("click", function(e) {
+            e.stopPropagation();
+            removePlaceFromLayer(layer.id, pi);
+          });
+          placesDiv.appendChild(pEl);
+        });
+      }
+      div.appendChild(placesDiv);
+      el.appendChild(div);
+    });
+  }
+
+  document.getElementById("btn-add-layer").addEventListener("click", function() { createLayer(); });
+
+  /* ── POI SYSTEM ── */
+  var poiIcons = ["🏫","🎓","🏟️","🛒","🏥","🏛️","⛪","🏢","🍽️","🏋️","🌳","✈️","🚉","🏠","📍"];
+  var poiColors = ["#ef4444","#f97316","#eab308","#22c55e","#14b8a6","#3b82f6","#8b5cf6","#ec4899","#f43f5e","#06b6d4","#84cc16","#a855f7"];
+  var poiCatIdCounter = 0;
+  var poiCategories = [];
+  var poiAddingToCat = null; // which category we're adding a point to
+  var POI_DATA_VERSION = 4; // bump this when default POI data changes
+
+  function initDefaultPOI() {
+    var cats = [
+      { name: "Major Employers — Fortune 500/1000", icon: "🏢", color: "#6366f1", points: [
+        {name: "Coca-Cola HQ", lat: 33.7866, lng: -84.3920, address: "1 Coca-Cola Plaza NW, Atlanta, GA 30313", fields: [{label:"Employees", value:"10,000+"}]},
+        {name: "Delta Air Lines HQ", lat: 33.7571, lng: -84.3903, address: "1030 Delta Blvd, Atlanta, GA 30354", fields: [{label:"Employees", value:"75,000+"}]},
+        {name: "Home Depot HQ", lat: 33.8887, lng: -84.4653, address: "2455 Paces Ferry Rd SE, Atlanta, GA 30339", fields: [{label:"Employees", value:"12,000+ (HQ)"}]},
+        {name: "UPS HQ", lat: 33.8034, lng: -84.3327, address: "55 Glenlake Pkwy NE, Atlanta, GA 30328", fields: [{label:"Employees", value:"3,180"}]},
+        {name: "NCR/Voyix", lat: 33.7813, lng: -84.3879, address: "864 Spring St NW, Atlanta, GA 30308"},
+        {name: "Norfolk Southern HQ", lat: 33.7574, lng: -84.3881, address: "650 W Peachtree St NW, Atlanta, GA 30308"},
+        {name: "Graphic Packaging (ICE)", lat: 33.9237, lng: -84.3393, address: "1500 Riveredge Pkwy, Atlanta, GA 30328"},
+        {name: "Newell Brands", lat: 33.9285, lng: -84.3402, address: "6655 Peachtree Dunwoody Rd, Atlanta, GA 30328"},
+        {name: "Cisco Systems", lat: 33.9650, lng: -84.0713, address: "7025 Kit Creek Rd, Peachtree Corners, GA 30092"},
+        {name: "Fiserv Inc", lat: 33.9220, lng: -84.3361, address: "255 Perimeter Center Pkwy, Atlanta, GA 30346", fields: [{label:"Employees", value:"3,000"}]},
+        {name: "AGCO Corporation", lat: 34.0489, lng: -84.0759, address: "4205 River Green Pkwy, Duluth, GA 30096"},
+        {name: "Asbury Automotive", lat: 34.0445, lng: -84.0793, address: "2905 Premiere Pkwy, Duluth, GA 30097"},
+        {name: "Primerica", lat: 34.0550, lng: -84.0724, address: "1 Primerica Pkwy, Duluth, GA 30099"},
+        {name: "State Farm", lat: 33.9246, lng: -84.3366, address: "Perimeter Center, Atlanta, GA 30346", fields: [{label:"Employees", value:"3,000"}]}
+      ]},
+      { name: "Major Employers — Regional/Tech", icon: "💼", color: "#8b5cf6", points: [
+        {name: "Google Atlanta", lat: 33.7811, lng: -84.3873, address: "10 10th St NE, Atlanta, GA 30309"},
+        {name: "Microsoft Atlanta", lat: 33.7785, lng: -84.3901, address: "8th & Spring St, Midtown, GA 30309"},
+        {name: "Amazon Fulfillment (I-85)", lat: 33.9500, lng: -84.0200, address: "I-85 Corridor, Norcross, GA 30093", fields: [{label:"Employees", value:"1,000+"}]},
+        {name: "AT&T Southeast HQ", lat: 33.7825, lng: -84.3846, address: "675 W Peachtree St NW, Atlanta, GA 30308", fields: [{label:"Employees", value:"2,200"}]},
+        {name: "Cox Communications", lat: 33.8960, lng: -84.3440, address: "6205 Peachtree Dunwoody Rd, Atlanta, GA 30328", fields: [{label:"Employees", value:"2,170"}]},
+        {name: "PulteGroup", lat: 33.7674, lng: -84.3571, address: "3350 Peachtree Rd NE, Atlanta, GA 30326"},
+        {name: "Spanx", lat: 33.7648, lng: -84.3578, address: "3035 Peachtree Rd NE, Atlanta, GA 30305"},
+        {name: "Carter's Inc", lat: 33.7695, lng: -84.3598, address: "Phipps Tower, 3438 Peachtree Rd NE, Atlanta, GA 30326"},
+        {name: "McKesson Corp", lat: 34.0480, lng: -84.1150, address: "McKesson Plaza, Duluth, GA 30096"},
+        {name: "Hewlett Packard", lat: 34.0600, lng: -84.2700, address: "Windward Pkwy, Alpharetta, GA 30005"},
+        {name: "Verizon HQ South", lat: 34.0780, lng: -84.2730, address: "Alpharetta, GA 30005", fields: [{label:"Employees", value:"3,300"}]},
+        {name: "CDC", lat: 33.7990, lng: -84.3260, address: "1600 Clifton Rd, Atlanta, GA 30329", fields: [{label:"Employees", value:"10,000+"}]}
+      ]},
+      { name: "Hospitals & Medical", icon: "🏥", color: "#ef4444", points: [
+        {name: "Children's Healthcare of Atlanta (CHOA)", lat: 33.7950, lng: -84.3290, address: "1001 Johnson Ferry Rd NE, Atlanta, GA 30342", fields: [{label:"Employees", value:"15,000"}]},
+        {name: "Emory University Hospital", lat: 33.7940, lng: -84.3210, address: "1364 Clifton Rd NE, Atlanta, GA 30322", fields: [{label:"Employees", value:"26,400"}]},
+        {name: "Atlanta VA Medical Center", lat: 33.7910, lng: -84.3177, address: "1670 Clairmont Rd, Decatur, GA 30033", fields: [{label:"Employees", value:"5,000+"}]},
+        {name: "Piedmont Hospital Atlanta", lat: 33.8115, lng: -84.3555, address: "1968 Peachtree Rd NW, Atlanta, GA 30309"},
+        {name: "Grady Memorial Hospital", lat: 33.7570, lng: -84.3930, address: "80 Jesse Hill Jr Dr SE, Atlanta, GA 30303"},
+        {name: "Northside Hospital Atlanta", lat: 33.8680, lng: -84.3560, address: "1000 Johnson Ferry Rd NE, Atlanta, GA 30342", fields: [{label:"Employees", value:"11,000"}]},
+        {name: "Wellstar Kennestone", lat: 33.9520, lng: -84.5310, address: "677 Church St NE, Marietta, GA 30060"},
+        {name: "Wellstar North Fulton Hospital", lat: 34.0835, lng: -84.2850, address: "3000 Hospital Blvd, Roswell, GA 30076", fields: [{label:"Employees", value:"1,300+"}]},
+        {name: "Emory St. Joseph's Hospital", lat: 34.0220, lng: -84.3250, address: "5665 Peachtree Dunwoody Rd, Atlanta, GA 30342", fields: [{label:"Employees", value:"3,300"}]},
+        {name: "Northside Hospital Gwinnett", lat: 33.9590, lng: -83.9860, address: "3620 Howell Ferry Rd, Duluth, GA 30096", fields: [{label:"Employees", value:"9,500+"}]},
+        {name: "Kaiser Permanente Gwinnett", lat: 34.0100, lng: -84.0700, address: "3665 Braselton Hwy, Dacula, GA 30019", fields: [{label:"Employees", value:"4,000+"}]},
+        {name: "Piedmont Eastside Medical", lat: 33.9640, lng: -83.9400, address: "1700 Medical Way, Snellville, GA 30078", fields: [{label:"Employees", value:"1,800+"}]},
+        {name: "Emory Johns Creek Hospital", lat: 34.0280, lng: -84.1980, address: "6325 Hospital Pkwy, Johns Creek, GA 30097", fields: [{label:"Employees", value:"1,800"}]},
+        {name: "Northside Hospital Duluth", lat: 34.0390, lng: -84.1210, address: "3855 Pleasant Hill Rd, Duluth, GA 30096", fields: [{label:"Employees", value:"5,700+"}]},
+        {name: "Wellstar Cobb Medical Center", lat: 33.8920, lng: -84.5360, address: "3950 Austell Rd, Austell, GA 30106"}
+      ]},
+      { name: "Universities & Colleges", icon: "🎓", color: "#3b82f6", points: [
+        {name: "Georgia Tech", lat: 33.7756, lng: -84.3963, address: "North Ave NW, Atlanta, GA 30332"},
+        {name: "Emory University", lat: 33.7908, lng: -84.3235, address: "201 Dowman Dr, Atlanta, GA 30322"},
+        {name: "Georgia State University", lat: 33.7530, lng: -84.3860, address: "33 Gilmer St SE, Atlanta, GA 30303"},
+        {name: "Kennesaw State University", lat: 33.9418, lng: -84.5201, address: "1000 Chastain Rd NW, Kennesaw, GA 30144"},
+        {name: "Georgia Gwinnett College", lat: 33.9810, lng: -83.9860, address: "1000 University Center Ln, Lawrenceville, GA 30043"},
+        {name: "Gwinnett Technical College", lat: 33.9710, lng: -84.0010, address: "5150 Sugarloaf Pkwy, Lawrenceville, GA 30043"},
+        {name: "UGA Gwinnett Campus", lat: 33.9590, lng: -83.9460, address: "2530 Sever Rd, Lawrenceville, GA 30043"},
+        {name: "Morehouse College", lat: 33.7477, lng: -84.4130, address: "830 Westview Dr SW, Atlanta, GA 30314"},
+        {name: "Spelman College", lat: 33.7455, lng: -84.4127, address: "350 Spelman Ln SW, Atlanta, GA 30314"},
+        {name: "Clark Atlanta University", lat: 33.7520, lng: -84.4120, address: "223 James P. Brawley Dr SW, Atlanta, GA 30314"},
+        {name: "Oglethorpe University", lat: 33.8262, lng: -84.3347, address: "4484 Peachtree Rd NE, Atlanta, GA 30319"}
+      ]},
+      { name: "Schools (K-12)", icon: "🏫", color: "#f97316", points: [
+        {name: "Innovation Academy (STEM Magnet)", lat: 34.0340, lng: -84.2810, address: "3045 Kimball Bridge Rd, Alpharetta, GA 30022", fields: [{label:"Niche Grade", value:"A"}]},
+        {name: "Duluth High School", lat: 34.0010, lng: -84.1450, address: "3737 Brock Rd, Duluth, GA 30096", fields: [{label:"Niche Grade", value:"A"}]},
+        {name: "Coleman Middle School", lat: 34.0050, lng: -84.1350, address: "380 Old Peachtree Rd NW, Duluth, GA 30097", fields: [{label:"Niche Grade", value:"A"}]},
+        {name: "Notre Dame Academy", lat: 34.0260, lng: -84.0880, address: "4635 River Green Pkwy, Duluth, GA 30096", fields: [{label:"Niche Grade", value:"A+"}]},
+        {name: "Northview High School", lat: 34.0460, lng: -84.2320, address: "10625 Parsons Rd, Johns Creek, GA 30097", fields: [{label:"Niche Grade", value:"A+"}]},
+        {name: "Roswell High School", lat: 34.0190, lng: -84.3540, address: "617 King St, Roswell, GA 30075", fields: [{label:"Niche Grade", value:"A"}]}
+      ]},
+      { name: "Stadiums & Entertainment", icon: "🏟️", color: "#f59e0b", points: [
+        {name: "Mercedes-Benz Stadium", lat: 33.7553, lng: -84.4006, address: "1 AMB Dr NW, Atlanta, GA 30313"},
+        {name: "State Farm Arena", lat: 33.7573, lng: -84.3963, address: "1 State Farm Dr, Atlanta, GA 30303"},
+        {name: "Truist Park (The Battery)", lat: 33.8907, lng: -84.4678, address: "755 Battery Ave SE, Atlanta, GA 30339"},
+        {name: "Gas South Arena", lat: 34.0350, lng: -84.0750, address: "6400 Sugarloaf Pkwy, Duluth, GA 30097"},
+        {name: "Coolray Field", lat: 34.0710, lng: -84.0900, address: "2500 Buford Dr, Lawrenceville, GA 30043"},
+        {name: "Ameris Bank Amphitheatre", lat: 34.0700, lng: -84.2700, address: "2200 Encore Pkwy, Alpharetta, GA 30009"},
+        {name: "Topgolf (multiple locations)", lat: 33.8900, lng: -84.4700, address: "Smyrna/Cobb area, GA 30339"},
+        {name: "Atlanta Falcons HQ & Training", lat: 33.9750, lng: -84.3710, address: "4400 Falcon Pkwy, Flowery Branch, GA 30542"}
+      ]},
+      { name: "Major Retail & Mixed-Use", icon: "🛒", color: "#22c55e", points: [
+        {name: "Lenox Square Mall", lat: 33.8457, lng: -84.3617, address: "3393 Peachtree Rd NE, Atlanta, GA 30326"},
+        {name: "Phipps Plaza", lat: 33.8504, lng: -84.3624, address: "3500 Peachtree Rd NE, Atlanta, GA 30326"},
+        {name: "Atlantic Station", lat: 33.7905, lng: -84.3945, address: "1380 Atlantic Dr NW, Atlanta, GA 30363"},
+        {name: "Mall of Georgia", lat: 34.0770, lng: -84.0190, address: "3333 Buford Dr, Buford, GA 30519"},
+        {name: "Gwinnett Place Mall (Redevelopment)", lat: 33.9590, lng: -84.0730, address: "2100 Pleasant Hill Rd, Duluth, GA 30096"},
+        {name: "Sugarloaf Mills", lat: 34.0380, lng: -84.0410, address: "5900 Sugarloaf Pkwy, Lawrenceville, GA 30043"},
+        {name: "The Battery Atlanta", lat: 33.8901, lng: -84.4685, address: "800 Battery Ave SE, Atlanta, GA 30339"},
+        {name: "Avalon (Alpharetta)", lat: 34.0710, lng: -84.2730, address: "2999 Avalon Blvd, Alpharetta, GA 30009"},
+        {name: "North Point Mall", lat: 34.0700, lng: -84.2200, address: "1000 North Point Cir, Alpharetta, GA 30022"},
+        {name: "Town Center at Cobb", lat: 34.0150, lng: -84.5650, address: "400 Ernest W Barrett Pkwy NW, Kennesaw, GA 30144"},
+        {name: "Brookwood Square", lat: 33.8800, lng: -84.5200, address: "Austell Rd, Austell, GA 30106"},
+        {name: "East West Commons Shopping", lat: 33.8700, lng: -84.5300, address: "Austell, GA 30106"},
+        {name: "Halcyon (Alpharetta)", lat: 34.0580, lng: -84.2250, address: "6365 Halcyon Way, Alpharetta, GA 30005"}
+      ]},
+      { name: "Office Parks & Business Centers", icon: "🏛️", color: "#06b6d4", points: [
+        {name: "Perimeter Center", lat: 33.9260, lng: -84.3400, address: "Perimeter Center, Dunwoody, GA 30346"},
+        {name: "Emory Executive Park", lat: 33.7930, lng: -84.3170, address: "Executive Park Dr, Atlanta, GA 30329"},
+        {name: "Technology Park Atlanta", lat: 33.9730, lng: -84.0750, address: "Technology Park, Peachtree Corners, GA 30092"},
+        {name: "Windward (Alpharetta)", lat: 34.1000, lng: -84.2600, address: "Windward Pkwy, Alpharetta, GA 30005"},
+        {name: "360 Tech Village", lat: 34.0670, lng: -84.2350, address: "Johns Creek, GA 30097"},
+        {name: "Sanctuary & Founders Park", lat: 34.0580, lng: -84.1850, address: "1.8M SF Office, Johns Creek, GA 30097"},
+        {name: "Rowen Foundation Research Park", lat: 33.9800, lng: -83.8500, address: "Rowen, Lawrenceville, GA 30043"},
+        {name: "Deerfield & Lakeview Center", lat: 34.0840, lng: -84.2800, address: "3M SF Office, Alpharetta, GA 30005"},
+        {name: "Assembly Studios (Doraville)", lat: 33.8990, lng: -84.2820, address: "4000 DeKalb Technology Pkwy, Doraville, GA 30340"},
+        {name: "Northmeadow Business Park", lat: 34.0450, lng: -84.2400, address: "1.2M SF Office, Roswell/Alpharetta, GA 30076"}
+      ]},
+      { name: "Transportation", icon: "✈️", color: "#a855f7", points: [
+        {name: "Hartsfield-Jackson Airport", lat: 33.6407, lng: -84.4277, address: "6000 N Terminal Pkwy, Atlanta, GA 30320", fields: [{label:"Employees", value:"63,000+"}]},
+        {name: "DeKalb-Peachtree Airport", lat: 33.8756, lng: -84.3025, address: "2000 Airport Rd, Chamblee, GA 30341"},
+        {name: "Five Points MARTA Station", lat: 33.7540, lng: -84.3916, address: "30 Alabama St SW, Atlanta, GA 30303"},
+        {name: "Lindbergh Center MARTA", lat: 33.8228, lng: -84.3695, address: "2424 Piedmont Rd NE, Atlanta, GA 30324"},
+        {name: "Doraville MARTA", lat: 33.9015, lng: -84.2811, address: "6000 New Peachtree Rd, Doraville, GA 30340"}
+      ]}
+    ];
+
+    cats.forEach(function(c) {
+      var cat = {
+        id: ++poiCatIdCounter,
+        name: c.name,
+        icon: c.icon,
+        color: c.color,
+        visible: true,
+        open: false,
+        points: [],
+        markers: []
+      };
+
+      c.points.forEach(function(p, pi) {
+        cat.points.push({name: p.name, lat: p.lat, lng: p.lng, address: p.address, fields: p.fields || []});
+        var iconHtml = '<div style="background:' + cat.color + ';width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.4);">' + cat.icon + '</div>';
+        var marker = L.marker([p.lat, p.lng], {
+          icon: L.divIcon({className: "", html: iconHtml, iconSize: [26, 26], iconAnchor: [13, 13]})
+        });
+        marker.bindPopup(buildPOIPopupEl(cat.points[pi], cat.id, pi), { maxWidth: 300 });
+        marker.addTo(map);
+        cat.markers.push(marker);
+      });
+
+      poiCategories.push(cat);
+    });
+  }
+
+  var SAVED_LAYER_VERSION = 1; // bump when default saved layers change
+
+  function initDefaultSavedLayers() {
+    var db = createLayer("DealBuddy");
+    db.icon = "🏘️";
+    db.color = "#ef4444";
+    var deals = [
+      {name:"Artesia Big Creek", lat:34.0920, lng:-84.2510, address:"6405 Rex Lane, Alpharetta, GA 30005", fields:[{label:"Vintage",value:"2020"},{label:"Units",value:"269"},{label:"Avg SF",value:"1,010"},{label:"Avg Rent",value:"$2,070"},{label:"PSF",value:"$2.05"}]},
+      {name:"Briarhill Apartment Homes", lat:33.8180, lng:-84.3560, address:"1470 Sheridan Road NE, Atlanta, GA 30324", fields:[{label:"Vintage",value:"1988"},{label:"Units",value:"292"},{label:"Avg SF",value:"872"},{label:"Avg Rent",value:"$1,497"},{label:"PSF",value:"$1.72"}]},
+      {name:"Capella Apartment Homes", lat:33.8340, lng:-84.2160, address:"6168 S. Norcross Tucker Rd, Tucker, GA 30084", fields:[{label:"Vintage",value:"1985"},{label:"Units",value:"320"},{label:"Avg SF",value:"1,059"},{label:"Avg Rent",value:"$1,476"},{label:"PSF",value:"$1.39"}]},
+      {name:"Elan Brookwood", lat:33.8560, lng:-84.6220, address:"3890 Floyd Road, Austell, GA 30106", fields:[{label:"Vintage",value:"2024"},{label:"Units",value:"395"},{label:"Avg SF",value:"1,004"},{label:"Avg Rent",value:"$1,983"},{label:"PSF",value:"$1.97"}]},
+      {name:"Enclave at Roswell", lat:34.0530, lng:-84.3130, address:"11251 Alpharetta Hwy, Roswell, GA 30076", fields:[{label:"Vintage",value:"1985"},{label:"Units",value:"236"},{label:"Avg SF",value:"925"},{label:"Avg Rent",value:"$1,523"},{label:"PSF",value:"$1.64"}]},
+      {name:"Gables Midtown", lat:33.7830, lng:-84.3680, address:"925 Monroe Drive, Atlanta, GA 30308", fields:[{label:"Vintage",value:"2009"},{label:"Units",value:"345"},{label:"Avg SF",value:"903"},{label:"Avg Rent",value:"$1,722"},{label:"PSF",value:"$1.91"}]},
+      {name:"Lakeside at Arbor Place", lat:33.7290, lng:-84.7280, address:"3005 GA-5, Douglasville, GA 30135", fields:[{label:"Vintage",value:"1988/1996"},{label:"Units",value:"246"},{label:"Avg SF",value:"973"},{label:"Avg Rent",value:"$1,408"},{label:"PSF",value:"$1.45"}]},
+      {name:"Montrose Berkeley Lake", lat:34.0030, lng:-84.1330, address:"3750 Peachtree Industrial Blvd, Duluth, GA 30096", fields:[{label:"Vintage",value:"1988"},{label:"Units",value:"492"},{label:"Avg SF",value:"964"},{label:"Avg Rent",value:"$1,432"},{label:"PSF",value:"$1.49"}]},
+      {name:"Parc 85", lat:34.0100, lng:-84.1560, address:"2620 N Berkeley Lake Rd NW, Duluth, GA 30096", fields:[{label:"Vintage",value:"2002"},{label:"Units",value:"344"},{label:"Avg SF",value:"987"},{label:"Avg Rent",value:"$1,582"},{label:"PSF",value:"$1.60"}]},
+      {name:"Perimeter Gardens at Georgetown", lat:33.9340, lng:-84.3260, address:"100 Azalea Garden Dr, Dunwoody, GA 30338", fields:[{label:"Vintage",value:"2006"},{label:"Units",value:"245"},{label:"Avg SF",value:"959"},{label:"Avg Rent",value:"$1,600"},{label:"PSF",value:"$1.67"}]},
+      {name:"Preserve at Mill Creek", lat:34.0680, lng:-84.0150, address:"1400 Mall of Georgia Blvd, Buford, GA 30519", fields:[{label:"Vintage",value:"2001"},{label:"Units",value:"400"},{label:"Avg SF",value:"1,015"},{label:"Avg Rent",value:"$1,612"},{label:"PSF",value:"$1.59"}]},
+      {name:"Reserve at Gwinnett", lat:33.9340, lng:-84.0590, address:"1780 Graves Rd, Norcross, GA 30093", fields:[{label:"Vintage",value:"1999"},{label:"Units",value:"370"},{label:"Avg SF",value:"1,161"},{label:"Avg Rent",value:"$1,563"},{label:"PSF",value:"$1.36"}]},
+      {name:"The Vivian", lat:33.7310, lng:-84.4110, address:"1246 Allene Ave SW, Atlanta, GA 30310", fields:[{label:"Vintage",value:"2023"},{label:"Units",value:"325"},{label:"Avg SF",value:"813"},{label:"Avg Rent",value:"$1,780"},{label:"PSF",value:"$2.19"}]},
+      {name:"Trace Midtown", lat:33.7730, lng:-84.3850, address:"782 Peachtree St NE, Atlanta, GA 30308", fields:[{label:"Vintage",value:"2016"},{label:"Units",value:"290"},{label:"Avg SF",value:"903"},{label:"Avg Rent",value:"$2,404"},{label:"PSF",value:"$2.66"}]}
+    ];
+    deals.forEach(function(d) { addPlaceToLayer(db.id, d); });
+  }
+
+  // Load saved state or use defaults
+  loadState();
+  if (!loadPOIState()) {
+    initDefaultPOI();
+  }
+  // Check if DealBuddy layer needs to be initialized
+  var savedLayerVer = parseInt(localStorage.getItem("atl_savedLayerVersion")) || 0;
+  if (savedLayerVer < SAVED_LAYER_VERSION) {
+    // Only add DealBuddy if it doesn't already exist
+    var hasDealBuddy = savedLayers.some(function(l) { return l.name === "DealBuddy"; });
+    if (!hasDealBuddy) {
+      initDefaultSavedLayers();
+    }
+    localStorage.setItem("atl_savedLayerVersion", SAVED_LAYER_VERSION);
+  }
+  renderSavedLayers();
+
+  function createPOICat(name, icon, color) {
+    var cat = {
+      id: ++poiCatIdCounter,
+      name: name || "Category " + poiCatIdCounter,
+      icon: icon || "📍",
+      color: color || poiColors[(poiCatIdCounter - 1) % poiColors.length],
+      visible: true, open: true, points: [], markers: []
+    };
+    poiCategories.push(cat);
+    renderPOI();
+    saveState();
+    return cat;
+  }
+
+  function deletePOICat(catId) {
+    var idx = poiCategories.findIndex(function(c) { return c.id === catId; });
+    if (idx === -1) return;
+    poiCategories[idx].markers.forEach(function(m) { map.removeLayer(m); });
+    poiCategories.splice(idx, 1);
+    renderPOI();
+    saveState();
+  }
+
+  function togglePOICatVis(catId) {
+    var cat = poiCategories.find(function(c) { return c.id === catId; });
+    if (!cat) return;
+    cat.visible = !cat.visible;
+    cat.markers.forEach(function(m) {
+      if (cat.visible) m.addTo(map); else map.removeLayer(m);
+    });
+    renderPOI();
+    saveState();
+  }
+
+  function addPOIPoint(catId, place) {
+    var cat = poiCategories.find(function(c) { return c.id === catId; });
+    if (!cat) return;
+    if (!place.fields) place.fields = [];
+    cat.points.push(place);
+    var pi = cat.points.length - 1;
+    var iconHtml = '<div style="background:' + cat.color + ';width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.4);">' + cat.icon + '</div>';
+    var marker = L.marker([place.lat, place.lng], {
+      icon: L.divIcon({ className: "", html: iconHtml, iconSize: [26, 26], iconAnchor: [13, 13] })
+    });
+    marker.bindPopup(buildPOIPopupEl(place, cat.id, pi), { maxWidth: 300 });
+    if (cat.visible) marker.addTo(map);
+    cat.markers.push(marker);
+    cat.open = true;
+    renderPOI();
+    saveState();
+  }
+
+  function removePOIPoint(catId, idx) {
+    var cat = poiCategories.find(function(c) { return c.id === catId; });
+    if (!cat) return;
+    map.removeLayer(cat.markers[idx]);
+    cat.points.splice(idx, 1);
+    cat.markers.splice(idx, 1);
+    renderPOI();
+    saveState();
+  }
+
+  function buildPOIPopupEl(point, catId, pointIdx) {
+    var cat = poiCategories.find(function(c) { return c.id === catId; });
+    var div = document.createElement("div");
+    div.style.cssText = "font:400 13px/1.5 IBM Plex Sans,sans-serif;max-width:280px;color:#e2e8f0;";
+    div.innerHTML = '<span style="font-size:16px;">' + (cat ? cat.icon : '📍') + '</span> <strong style="font-weight:600;color:#fff;">' + point.name + '</strong><br><span style="font-size:11px;color:#94a3b8;">' + point.address + '</span><br><span style="font-size:10px;color:#64748b;">' + (cat ? cat.name : '') + '</span>';
+    if (point.fields && point.fields.length > 0) {
+      var fieldsDiv = document.createElement("div");
+      fieldsDiv.style.cssText = "margin-top:6px;border-top:1px solid rgba(255,255,255,0.1);padding-top:6px;";
+      point.fields.forEach(function(f) {
+        var row = document.createElement("div");
+        row.style.cssText = "display:flex;justify-content:space-between;font-size:11px;padding:2px 0;";
+        row.innerHTML = '<span style="color:#94a3b8;">' + f.label + '</span><span style="font-weight:600;color:#fff;">' + f.value + '</span>';
+        fieldsDiv.appendChild(row);
+      });
+      div.appendChild(fieldsDiv);
+    }
+    var btnRow = document.createElement("div");
+    btnRow.style.cssText = "margin-top:8px;border-top:1px solid rgba(255,255,255,0.1);padding-top:8px;display:flex;justify-content:flex-end;";
+    var editBtn = document.createElement("button");
+    editBtn.innerHTML = "✏️ Edit Info";
+    editBtn.style.cssText = "font-family:IBM Plex Sans,sans-serif;font-size:12px;font-weight:600;padding:5px 14px;border-radius:5px;border:none;background:#3b9eff;color:#fff;cursor:pointer;display:flex;align-items:center;gap:4px;";
+    editBtn.addEventListener("click", function(e) {
+      e.stopPropagation(); e.preventDefault();
+      map.closePopup();
+      openPOIFieldsModal(catId, pointIdx);
+    });
+    btnRow.appendChild(editBtn);
+    div.appendChild(btnRow);
+    return div;
+  }
+
+  function openPOIFieldsModal(catId, pointIdx) {
+    var cat = poiCategories.find(function(c) { return c.id === catId; });
+    if (!cat) return;
+    var point = cat.points[pointIdx];
+    if (!point) return;
+    if (!point.fields) point.fields = [];
+    var existing = document.querySelector(".fields-modal-overlay");
+    if (existing) existing.remove();
+    var overlay = document.createElement("div");
+    overlay.className = "fields-modal-overlay";
+    function renderModal() {
+      var fieldsHtml = '';
+      point.fields.forEach(function(f, fi) {
+        fieldsHtml += '<div class="fm-row" data-fi="' + fi + '">' +
+          '<input class="fm-label" placeholder="Label" value="' + (f.label || '').replace(/"/g, '&quot;') + '" />' +
+          '<input class="fm-value" placeholder="Value" value="' + (f.value || '').replace(/"/g, '&quot;') + '" />' +
+          '<span class="fm-del" title="Remove field">✕</span></div>';
+      });
+      var modal = '<div class="fields-modal">' +
+        '<h3>' + (cat.icon + ' ' + point.name) + '</h3>' +
+        '<div class="fm-addr">' + point.address + '</div>' +
+        '<div class="fm-fields">' + (fieldsHtml || '<div style="font-size:11px;color:var(--text-dim);padding:4px 0;">No fields yet. Click "+ Add Field" below.</div>') + '</div>' +
+        '<div class="fm-actions">' +
+        '<button class="btn fm-add-btn">+ Add Field</button>' +
+        '<button class="btn fm-done-btn" style="background:var(--accent);border-color:var(--accent);color:#fff;">Done</button>' +
+        '</div></div>';
+      overlay.innerHTML = modal;
+      overlay.querySelectorAll(".fm-row").forEach(function(row) {
+        var fi = parseInt(row.getAttribute("data-fi"));
+        row.querySelector(".fm-label").addEventListener("input", function() { point.fields[fi].label = this.value; });
+        row.querySelector(".fm-value").addEventListener("input", function() { point.fields[fi].value = this.value; });
+        row.querySelector(".fm-del").addEventListener("click", function() { point.fields.splice(fi, 1); renderModal(); });
+      });
+      overlay.querySelector(".fm-add-btn").addEventListener("click", function() {
+        point.fields.push({ label: "", value: "" });
+        renderModal();
+        var rows = overlay.querySelectorAll(".fm-row");
+        if (rows.length > 0) rows[rows.length - 1].querySelector(".fm-label").focus();
+      });
+      overlay.querySelector(".fm-done-btn").addEventListener("click", function() {
+        point.fields = point.fields.filter(function(f) { return f.label.trim() || f.value.trim(); });
+        refreshCatMarkers(cat);
+        renderPOI();
+        overlay.remove();
+      });
+    }
+    renderModal();
+    overlay.addEventListener("click", function(e) {
+      if (e.target === overlay) {
+        point.fields = point.fields.filter(function(f) { return f.label.trim() || f.value.trim(); });
+        refreshCatMarkers(cat);
+        renderPOI();
+        overlay.remove();
+      }
+    });
+    document.body.appendChild(overlay);
+  }
+
+  function refreshCatMarkers(cat) {
+    cat.markers.forEach(function(m) { map.removeLayer(m); });
+    cat.markers = [];
+    cat.points.forEach(function(p, pi) {
+      if (!p.fields) p.fields = [];
+      var iconHtml = '<div style="background:' + cat.color + ';width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.4);">' + cat.icon + '</div>';
+      var marker = L.marker([p.lat, p.lng], {
+        icon: L.divIcon({ className: "", html: iconHtml, iconSize: [26, 26], iconAnchor: [13, 13] })
+      });
+      marker.bindPopup(buildPOIPopupEl(p, cat.id, pi), { maxWidth: 300 });
+      if (cat.visible) marker.addTo(map);
+      cat.markers.push(marker);
+    });
+    saveState();
+  }
+
+  // Picker state
+  var poiPickerCat = null;
+  function closePOIPicker() {
+    var pk = document.getElementById("poi-picker");
+    if (pk) pk.classList.remove("show");
+    poiPickerCat = null;
+  }
+
+  function showPOIPicker(catId, anchorEl) {
+    poiPickerCat = catId;
+    var cat = poiCategories.find(function(c) { return c.id === catId; });
+    if (!cat) return;
+    var pk = document.getElementById("poi-picker");
+    // Colors
+    var colorsHtml = '';
+    poiColors.forEach(function(c) {
+      colorsHtml += '<div class="poi-picker-swatch' + (c === cat.color ? ' sel' : '') + '" style="background:' + c + ';" data-color="' + c + '"></div>';
+    });
+    // Icons
+    var iconsHtml = '';
+    poiIcons.forEach(function(ic) {
+      iconsHtml += '<div class="poi-picker-icon' + (ic === cat.icon ? ' sel' : '') + '" data-icon="' + ic + '">' + ic + '</div>';
+    });
+    pk.innerHTML = '<div style="display:flex;justify-content:flex-end;margin-bottom:4px;"><span class="picker-close" style="cursor:pointer;font-size:14px;color:var(--text-dim);padding:2px 4px;line-height:1;" title="Close">✕</span></div>' +
+      '<div class="poi-picker-label">Color</div><div class="poi-picker-row">' + colorsHtml + '</div>' +
+      '<div class="poi-picker-label">Icon</div><div class="poi-picker-row">' + iconsHtml + '</div>';
+    pk.classList.add("show");
+
+    pk.querySelector(".picker-close").addEventListener("click", function(e) {
+      e.stopPropagation();
+      closePOIPicker();
+    });
+
+    // Bind color clicks
+    pk.querySelectorAll(".poi-picker-swatch").forEach(function(sw) {
+      sw.addEventListener("click", function(e) {
+        e.stopPropagation();
+        cat.color = this.getAttribute("data-color");
+        refreshCatMarkers(cat);
+        showPOIPicker(catId); // re-render picker
+        renderPOI();
+      });
+    });
+    // Bind icon clicks
+    pk.querySelectorAll(".poi-picker-icon").forEach(function(ic) {
+      ic.addEventListener("click", function(e) {
+        e.stopPropagation();
+        cat.icon = this.getAttribute("data-icon");
+        refreshCatMarkers(cat);
+        showPOIPicker(catId); // re-render picker
+        renderPOI();
+      });
+    });
+  }
+
+  function renderPOI() {
+    var el = document.getElementById("poi-categories");
+    el.innerHTML = "";
+    if (poiCategories.length === 0) {
+      el.innerHTML = '<div style="padding:24px 20px;text-align:center;color:var(--text-dim);font-size:12px;">No categories yet.</div>';
+      return;
+    }
+    poiCategories.forEach(function(cat) {
+      var div = document.createElement("div");
+      div.className = "poi-cat" + (cat.open ? " open" : "");
+
+      var hdr = document.createElement("div");
+      hdr.className = "poi-cat-hdr";
+      hdr.innerHTML = '<span class="layer-expand">▶</span>' +
+        '<div class="poi-cat-icon" style="background:' + cat.color + ';" title="Change icon/color">' + cat.icon + '</div>' +
+        '<input class="poi-cat-name" value="' + cat.name.replace(/"/g, '&quot;') + '" readonly />' +
+        '<span class="layer-count">' + cat.points.length + '</span>' +
+        '<button class="poi-cat-add" title="Add point">+</button>' +
+        '<button class="layer-vis ' + (cat.visible ? "on" : "") + '" title="Toggle visibility">' + (cat.visible ? "👁" : "👁‍🗨") + '</button>' +
+        '<button class="layer-del" title="Delete category">✕</button>';
+      div.appendChild(hdr);
+
+      // Expand/collapse
+      hdr.querySelector(".layer-expand").addEventListener("click", function(e) {
+        e.stopPropagation();
+        cat.open = !cat.open;
+        renderPOI();
+      });
+
+      // Icon/color picker
+      hdr.querySelector(".poi-cat-icon").addEventListener("click", function(e) {
+        e.stopPropagation();
+        if (poiPickerCat === cat.id) { closePOIPicker(); } else { showPOIPicker(cat.id); }
+      });
+
+      // Double-click to edit name
+      var nameInput = hdr.querySelector(".poi-cat-name");
+      nameInput.addEventListener("dblclick", function(e) {
+        e.stopPropagation();
+        this.removeAttribute("readonly");
+        this.focus();
+        this.select();
+      });
+      nameInput.addEventListener("blur", function() {
+        this.setAttribute("readonly", "");
+        cat.name = this.value.trim() || cat.name;
+        saveState();
+      });
+      nameInput.addEventListener("keydown", function(e) {
+        if (e.key === "Enter") { this.blur(); }
+        e.stopPropagation();
+      });
+      nameInput.addEventListener("click", function(e) { e.stopPropagation(); });
+
+      // Add point button — triggers search mode for this category
+      hdr.querySelector(".poi-cat-add").addEventListener("click", function(e) {
+        e.stopPropagation();
+        poiAddingToCat = cat.id;
+        document.getElementById("search-input").placeholder = "Search to add to " + cat.name + "...";
+        document.getElementById("search-input").focus();
+        document.getElementById("search-input").value = "";
+      });
+
+      // Visibility
+      hdr.querySelector(".layer-vis").addEventListener("click", function(e) {
+        e.stopPropagation();
+        togglePOICatVis(cat.id);
+      });
+
+      // Delete
+      hdr.querySelector(".layer-del").addEventListener("click", function(e) {
+        e.stopPropagation();
+        deletePOICat(cat.id);
+      });
+
+      // Points list
+      var ptsDiv = document.createElement("div");
+      ptsDiv.className = "poi-points";
+      if (cat.points.length === 0) {
+        ptsDiv.innerHTML = '<div style="font-size:11px;color:var(--text-dim);padding:4px 0;">Click + to search and add points.</div>';
+      } else {
+        cat.points.forEach(function(p, pi) {
+          var pEl = document.createElement("div");
+          pEl.className = "poi-point";
+          var fieldsCount = (p.fields && p.fields.length > 0) ? ' <span style="font-size:9px;color:var(--accent);font-weight:600;">(' + p.fields.length + ')</span>' : '';
+          pEl.innerHTML = '<span class="sp-icon">' + cat.icon + '</span><span class="sp-name">' + p.name + fieldsCount + '</span><span class="sp-info" title="Edit info">ℹ️</span><span class="sp-remove" title="Remove">✕</span>';
+          pEl.addEventListener("click", function(e) {
+            if (e.target.classList.contains("sp-remove") || e.target.classList.contains("sp-info")) return;
+            map.flyTo([p.lat, p.lng], 16, { duration: 0.8 });
+            if (cat.markers[pi]) cat.markers[pi].openPopup();
+          });
+          pEl.querySelector(".sp-info").addEventListener("click", function(e) {
+            e.stopPropagation();
+            openPOIFieldsModal(cat.id, pi);
+          });
+          pEl.querySelector(".sp-remove").addEventListener("click", function(e) {
+            e.stopPropagation();
+            removePOIPoint(cat.id, pi);
+          });
+          ptsDiv.appendChild(pEl);
+        });
+      }
+      div.appendChild(ptsDiv);
+      el.appendChild(div);
+    });
+  }
+
+  document.getElementById("btn-add-category").addEventListener("click", function() { createPOICat(); });
+  renderPOI();
+
+  /* ── UNIFIED SEARCH ── */
+  var geoResultsData = [];
+  var geoDebounceTimer = null;
+
+  document.getElementById("search-input").addEventListener("input", function() {
+    var q = this.value.trim();
+    if (activeTab === "markets") {
+      buildList(q);
+    }
+    if (!q) {
+      document.getElementById("geo-results").style.display = "none";
+      if (poiAddingToCat) { poiAddingToCat = null; this.placeholder = "Search..."; }
+      if (geoDebounceTimer) { clearTimeout(geoDebounceTimer); geoDebounceTimer = null; }
+      return;
+    }
+    // Auto-geocode after short delay (for POI adding, saved tab, or when no market matches)
+    if (geoDebounceTimer) clearTimeout(geoDebounceTimer);
+    geoDebounceTimer = setTimeout(function() {
+      var val = document.getElementById("search-input").value.trim();
+      if (!val || val.length < 3) return;
+      if (poiAddingToCat) { geoSearchResults(val); return; }
+      if (activeTab === "saved" || activeTab === "poi") { geoSearchResults(val); return; }
+      if (activeTab === "markets") {
+        var lf = val.toLowerCase();
+        var hasMatch = submarkets.some(function(sm) {
+          return sm.name.toLowerCase().indexOf(lf) !== -1 || sm.county.toLowerCase().indexOf(lf) !== -1;
+        });
+        if (!hasMatch) { geoSearchResults(val); }
+      }
+    }, 350);
+  });
+
+  var searchInputEl = document.getElementById("search-input");
+  searchInputEl.addEventListener("keydown", function(e) {
+    if (e.key === "Escape") {
+      document.getElementById("geo-results").style.display = "none";
+      if (geoDebounceTimer) { clearTimeout(geoDebounceTimer); geoDebounceTimer = null; }
+      if (poiAddingToCat) {
+        poiAddingToCat = null;
+        this.placeholder = "Search...";
+      }
+    }
+  });
+  searchInputEl.addEventListener("keyup", function(e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      e.stopPropagation();
+      var q = this.value.trim();
+      if (!q) return;
+      if (geoDebounceTimer) { clearTimeout(geoDebounceTimer); geoDebounceTimer = null; }
+      // If geo results are already visible, click the first result
+      var grd = document.getElementById("geo-results");
+      if (grd.style.display === "block" && grd.querySelector(".geo-result-item")) {
+        grd.querySelector(".geo-result-item").click();
+        return;
+      }
+      // Otherwise trigger a new geo search
+      geoSearchResults(q);
+    }
+  });
+
+  function geoSearchResults(q) {
+    // Show loading indicator
+    var grd = document.getElementById("geo-results");
+    grd.innerHTML = '<div style="padding:12px;font-size:12px;color:var(--text-dim);text-align:center;">Searching...</div>';
+    grd.style.display = "block";
+    var url = "https://nominatim.openstreetmap.org/search?format=json&limit=5&viewbox=-85.1,34.4,-83.5,33.2&bounded=0&q=" + encodeURIComponent(q);
+    fetch(url, { headers: { "Accept-Language": "en" } })
+      .then(function(r) { return r.json(); })
+      .then(function(results) {
+        if (!results || results.length === 0) {
+          var grd = document.getElementById("geo-results");
+          grd.innerHTML = '<div style="padding:12px;font-size:12px;color:var(--text-dim);text-align:center;">No results found</div>';
+          grd.style.display = "block";
+          return;
+        }
+        geoResultsData = results;
+        var grd = document.getElementById("geo-results");
+        grd.innerHTML = "";
+        var addingCat = poiAddingToCat;
+        results.forEach(function(r, i) {
+          var parts = r.display_name.split(",");
+          var name = parts.slice(0, 2).join(",").trim();
+          var addr = parts.slice(2).join(",").trim();
+          var item = document.createElement("div");
+          item.className = "geo-result-item";
+          if (addingCat) {
+            // POI adding mode — show + Add button
+            item.innerHTML = '<div><div class="gr-name">' + name + '</div><div class="gr-addr">' + addr + '</div></div><span class="gr-save" title="Add to category">+ Add</span>';
+          } else {
+            item.innerHTML = '<div><div class="gr-name">' + name + '</div><div class="gr-addr">' + addr + '</div></div><span class="gr-save" title="Save to layer">+ Save</span>';
+          }
+          item.addEventListener("click", function(e) {
+            var lat = parseFloat(r.lat);
+            var lng = parseFloat(r.lon);
+            if (addingCat && e.target.classList.contains("gr-save")) {
+              addPOIPoint(addingCat, { name: name, address: r.display_name, lat: lat, lng: lng });
+              // Stay in adding mode for more points
+              document.getElementById("search-input").value = "";
+              grd.style.display = "none";
+              return;
+            }
+            if (e.target.classList.contains("gr-save")) {
+              if (savedLayers.length === 0) createLayer();
+              showLayerPicker(r, lat, lng);
+              return;
+            }
+            // Just fly to location
+            if (geoMarker) { map.removeLayer(geoMarker); }
+            geoMarker = L.marker([lat, lng]).addTo(map);
+            // Build popup as real DOM so event listeners work reliably
+            var popupDiv = document.createElement("div");
+            popupDiv.style.cssText = "font:400 13px/1.5 IBM Plex Sans,sans-serif;max-width:290px;color:#e2e8f0;";
+            popupDiv.innerHTML = '<strong style="font-weight:600;color:#fff;">' + name + '</strong><br><span style="font-size:11px;color:#94a3b8;">' + r.display_name + '</span>';
+            var row = document.createElement("div");
+            row.style.cssText = "margin-top:8px;display:flex;gap:6px;align-items:center;";
+            var sel = document.createElement("select");
+            sel.style.cssText = "font-family:IBM Plex Sans,sans-serif;font-size:11px;padding:5px 6px;border-radius:5px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.08);color:#e2e8f0;flex:1;min-width:0;cursor:pointer;";
+            savedLayers.forEach(function(sl) {
+              var opt = document.createElement("option");
+              opt.value = sl.id;
+              opt.textContent = sl.icon + " " + sl.name;
+              sel.appendChild(opt);
+            });
+            var newOpt = document.createElement("option");
+            newOpt.value = "__new__";
+            newOpt.textContent = "+ New Layer";
+            sel.appendChild(newOpt);
+            var addBtn = document.createElement("button");
+            addBtn.textContent = "+ Add";
+            addBtn.style.cssText = "font-family:IBM Plex Sans,sans-serif;font-size:11px;font-weight:600;padding:5px 12px;border-radius:5px;border:none;background:#3b9eff;color:#fff;cursor:pointer;white-space:nowrap;flex-shrink:0;";
+            addBtn.addEventListener("click", function(e) {
+              e.stopPropagation();
+              e.preventDefault();
+              var val = sel.value;
+              var targetLayerId;
+              if (val === "__new__") {
+                var newLayer = createLayer();
+                targetLayerId = newLayer.id;
+              } else {
+                targetLayerId = parseInt(val);
+              }
+              addPlaceToLayer(targetLayerId, { name: name, address: r.display_name, lat: lat, lng: lng });
+              if (geoMarker) { map.removeLayer(geoMarker); geoMarker = null; }
+              switchTab("saved");
+            });
+            row.appendChild(sel);
+            row.appendChild(addBtn);
+            popupDiv.appendChild(row);
+            geoMarker.bindPopup(popupDiv, { maxWidth: 300 }).openPopup();
+            map.flyTo([lat, lng], 15, { duration: 1.2 });
+            grd.style.display = "none";
+            if (addingCat) {
+              poiAddingToCat = null;
+              document.getElementById("search-input").placeholder = "Search...";
+            }
+          });
+          grd.appendChild(item);
+        });
+        grd.style.display = "block";
+      })
+      .catch(function(err) {
+        console.error("Geocoding error:", err);
+        var grd = document.getElementById("geo-results");
+        grd.innerHTML = '<div style="padding:12px;font-size:12px;color:#fb7185;text-align:center;">Search failed — check connection</div>';
+        grd.style.display = "block";
+      });
+  }
+
+  function showLayerPicker(result, lat, lng) {
+    var parts = result.display_name.split(",");
+    var placeName = parts.slice(0, 2).join(",").trim();
+    var placeAddr = result.display_name;
+    if (savedLayers.length === 1) {
+      addPlaceToLayer(savedLayers[0].id, { name: placeName, address: placeAddr, lat: lat, lng: lng });
+      document.getElementById("geo-results").style.display = "none";
+      switchTab("saved");
+      return;
+    }
+    // Multiple layers — show picker in geo-results
+    var grd = document.getElementById("geo-results");
+    grd.innerHTML = '<div style="padding:8px 12px;font-size:11px;color:var(--text-dim);border-bottom:1px solid var(--border);">Save "' + placeName + '" to which layer?</div>';
+    savedLayers.forEach(function(layer) {
+      var item = document.createElement("div");
+      item.className = "geo-result-item";
+      item.innerHTML = '<div class="layer-color-dot" style="background:' + layer.color + ';width:8px;height:8px;border-radius:50%;flex-shrink:0;"></div><span>' + layer.name + '</span><span style="margin-left:auto;color:var(--accent);font-size:11px;font-weight:600;">+ Add</span>';
+      item.addEventListener("click", function() {
+        addPlaceToLayer(layer.id, { name: placeName, address: placeAddr, lat: lat, lng: lng });
+        grd.style.display = "none";
+        switchTab("saved");
+      });
+      grd.appendChild(item);
+    });
+  }
+
+  // Close geo results when clicking outside
+  document.addEventListener("click", function(e) {
+    var grd = document.getElementById("geo-results");
+    if (!grd.contains(e.target) && e.target.id !== "search-input") {
+      grd.style.display = "none";
+    }
+  });
+
+  document.getElementById("sidebar-collapse-tab").addEventListener("click", function() { document.getElementById("sidebar").classList.add("collapsed"); });
+  document.getElementById("sidebar-open").addEventListener("click", function() { document.getElementById("sidebar").classList.remove("collapsed"); });
+
+  /* ── OVERLAY CONTROL ── */
+  document.getElementById("ov-toggle-header").addEventListener("click", function() {
+    document.getElementById("overlay-panel").classList.toggle("collapsed");
+  });
+
+  // Census overlay toggles
+  document.querySelectorAll(".ov-item[data-layer]").forEach(function(el) {
+    el.addEventListener("click", function() {
+      var layerName = this.getAttribute("data-layer");
+      // If clicking the already-active layer, turn it off
+      if (activeLayerName === layerName) {
+        map.removeLayer(activeOverlay);
+        activeOverlay = null;
+        activeLayerName = null;
+        this.classList.remove("active");
+        updateLegend(null);
+        return;
+      }
+      // Remove previous overlay
+      if (activeOverlay) {
+        map.removeLayer(activeOverlay);
+        document.querySelectorAll(".ov-item[data-layer].active").forEach(function(a) { a.classList.remove("active"); });
+      }
+      // Add new overlay
+      activeLayerName = layerName;
+      activeOverlay = createJusticeLayer(layerName);
+      activeOverlay.addTo(map);
+      activeOverlay.bringToFront();
+      this.classList.add("active");
+      updateLegend(layerName);
+    });
+  });
+
+  // CoStar circles toggle
+  document.getElementById("ov-costar").addEventListener("click", function() {
+    costarActive = !costarActive;
+    Object.keys(costarPolygons).forEach(function(name) {
+      if (costarActive) map.addLayer(costarPolygons[name]);
+      else map.removeLayer(costarPolygons[name]);
+    });
+    this.classList.toggle("active");
+  });
+  document.getElementById("ov-costar").classList.add("active");
+
+  // Legend toggle
+  document.getElementById("legend-toggle").addEventListener("click", function() {
+    document.getElementById("legend-box").classList.toggle("open");
+  });
+  // Close legend when clicking elsewhere — but only if no census overlay is active
+  document.addEventListener("click", function(e) {
+    if (activeLayerName) return; // keep legend open while a census overlay is on
+    var box = document.getElementById("legend-box");
+    var toggle = document.getElementById("legend-toggle");
+    if (!box.contains(e.target) && !toggle.contains(e.target)) {
+      box.classList.remove("open");
+    }
+  });
+
+  // Opacity slider — controls both census overlay and CoStar circles
+  document.getElementById("overlay-opacity-slider").addEventListener("input", function() {
+    var val = this.value / 100;
+    document.getElementById("overlay-opacity-val").textContent = this.value;
+    overlayOpacity = val;
+    if (activeOverlay) activeOverlay.setOpacity(val);
+    Object.keys(costarPolygons).forEach(function(name) {
+      costarPolygons[name].setStyle({ opacity: val * 0.7, fillOpacity: val * 0.08 });
+    });
+  });
+
+  /* ── INFO PANEL ── */
+  var activeId = null;
+
+  function openPanel(id) {
+    var sm = null;
+    for (var i = 0; i < submarkets.length; i++) { if (submarkets[i].id === id) { sm = submarkets[i]; break; } }
+    if (!sm) return;
+
+    document.querySelectorAll(".sm-item").forEach(function(e) { e.classList.remove("active"); });
+    var si = document.querySelector('.sm-item[data-id="' + id + '"]');
+    if (si) si.classList.add("active");
+
+    if (activeId) { var p = document.querySelector('.cmarker[data-id="' + activeId + '"]'); if (p) p.classList.remove("hl"); }
+    var c = document.querySelector('.cmarker[data-id="' + id + '"]');
+    if (c) c.classList.add("hl");
+    activeId = id;
+
+    document.getElementById("panel-name").textContent = sm.name;
+    document.getElementById("panel-sub").textContent = sm.county + "  · " + sm.type;
+
+    var h = "";
+    h += sec("Demographics", [
+      r("Population",""), r("Pop. Growth (5yr)",""), r("Median Age",""),
+      r("Median HH Income",""), r("Avg. HH Size","")
+    ], "Data will populate from Census / ESRI sources via Excel workbook.");
+
+    h += sec("Employment", [
+      r("Unemployment Rate",""), r("Job Growth (YoY)",""),
+      '<div class="drow"><span class="dl">Key Employers</span></div><div style="padding:6px 0"><span class="tag tag-blue">—</span></div>'
+    ], "Employer data from BLS / CoStar / local EDCs.");
+
+    h += sec("Multifamily / Rent", [
+      r("Avg. Effective Rent",""), r("Rent Growth (YoY)",""), r("Occupancy",""),
+      r("Units Under Construction",""), r("Deliveries (TTM)","")
+    ], "Rent / supply data from CoStar, RealPage, or Yardi Matrix.");
+
+    h += sec("Education", [
+      r("School District Rating",""), r("% Bachelor's Degree+",""),
+      '<div class="drow"><span class="dl">Nearby Universities</span></div><div style="padding:6px 0"><span class="tag tag-green">—</span></div>'
+    ], "Education data from Niche.com, Census ACS, NCES.");
+
+    h += sec("Population by Age Cohort", [
+      r("18–24",""), r("25–34",""), r("35–44",""),
+      r("45–54",""), r("55–64",""), r("65+","")
+    ], "Age cohort data from Census ACS 5-Year Estimates.");
+
+    h += sec("Housing & Supply", [
+      r("Median Home Value",""), r("% Renter Occupied",""),
+      r("Total MF Inventory",""), r("Pipeline (Planned)","")
+    ], "Housing data from Zillow, Census, CoStar.");
+
+    h += sec("Transportation & Connectivity", [
+      r("MARTA Access",""), r("Major Highways",""), r("Avg. Commute (min)","")
+    ], "Transit data from MARTA, ARC, Census ACS.");
+
+    document.getElementById("panel-body").innerHTML = h;
+    document.getElementById("info-panel").classList.add("open");
+  }
+
+  function sec(title, rows, note) {
+    var s = '<div class="dsec"><h3>' + title + '</h3>';
+    rows.forEach(function(rv) { s += rv; });
+    if (note) s += '<div class="pnote">' + note + '</div>';
+    s += '</div>';
+    return s;
+  }
+  function r(label, val) {
+    return '<div class="drow"><span class="dl">' + label + '</span><span class="dv">' + (val || "—") + '</span></div>';
+  }
+
+  function closePanel() {
+    document.getElementById("info-panel").classList.remove("open");
+    document.querySelectorAll(".sm-item").forEach(function(e) { e.classList.remove("active"); });
+    if (activeId) { var e = document.querySelector('.cmarker[data-id="' + activeId + '"]'); if (e) e.classList.remove("hl"); activeId = null; }
+  }
+
+  document.getElementById("btn-close-panel").addEventListener("click", closePanel);
+  document.addEventListener("keydown", function(e) {
+    if (e.key === "Escape") {
+      if (filterPanelOpen) closeFilterPanel();
+      else closePanel();
+    }
+  });
+
+  /* ── GEOCODING (legacy flyTo) ── */
+  var geoMarker = null;
+
+  /* ── CLICK-TO-ADD: right-click or long-press the map to discover & add places ── */
+  var clickAddMarker = null;
+  var clickAddThrottle = false;
+
+  function reverseGeocode(lat, lng) {
+    if (clickAddThrottle) return;
+    clickAddThrottle = true;
+    setTimeout(function() { clickAddThrottle = false; }, 1200); // rate-limit Nominatim
+
+    if (clickAddMarker) { map.removeLayer(clickAddMarker); clickAddMarker = null; }
+
+    // Temporary pulsing marker while loading
+    var pulseHtml = '<div style="width:20px;height:20px;border-radius:50%;background:rgba(59,158,255,0.4);border:2px solid #3b9eff;animation:pulse-ring 1s ease-out infinite;"></div>';
+    clickAddMarker = L.marker([lat, lng], {
+      icon: L.divIcon({ className: "", html: pulseHtml, iconSize: [20, 20], iconAnchor: [10, 10] })
+    }).addTo(map);
+
+    var url = "https://nominatim.openstreetmap.org/reverse?format=json&lat=" + lat + "&lon=" + lng + "&zoom=18&addressdetails=1";
+    fetch(url, { headers: { "Accept-Language": "en" } })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (!data || data.error) {
+          if (clickAddMarker) { map.removeLayer(clickAddMarker); clickAddMarker = null; }
+          return;
+        }
+        var placeName = data.name || data.address.amenity || data.address.building || data.address.shop || data.address.leisure || data.address.tourism || data.address.road || "Unnamed Location";
+        var placeAddr = data.display_name || "";
+
+        // Build popup DOM
+        var popDiv = document.createElement("div");
+        popDiv.style.cssText = "font:400 13px/1.5 'IBM Plex Sans',sans-serif;max-width:300px;color:#e2e8f0;";
+
+        // Title row with editable name
+        var titleRow = document.createElement("div");
+        titleRow.style.cssText = "display:flex;align-items:center;gap:6px;margin-bottom:4px;";
+        var nameInput = document.createElement("input");
+        nameInput.type = "text";
+        nameInput.value = placeName;
+        nameInput.style.cssText = "flex:1;font:600 14px 'IBM Plex Sans',sans-serif;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:4px;padding:4px 8px;color:#fff;min-width:0;";
+        titleRow.appendChild(nameInput);
+        popDiv.appendChild(titleRow);
+
+        // Address
+        var addrEl = document.createElement("div");
+        addrEl.style.cssText = "font-size:11px;color:#94a3b8;margin-bottom:8px;line-height:1.4;";
+        addrEl.textContent = placeAddr;
+        popDiv.appendChild(addrEl);
+
+        // Divider
+        var divider = document.createElement("div");
+        divider.style.cssText = "border-top:1px solid rgba(255,255,255,0.1);padding-top:8px;margin-bottom:6px;";
+
+        var label = document.createElement("div");
+        label.style.cssText = "font-size:11px;color:#94a3b8;margin-bottom:4px;font-weight:600;";
+        label.textContent = "Add to:";
+        divider.appendChild(label);
+        popDiv.appendChild(divider);
+
+        // Category/layer select
+        var sel = document.createElement("select");
+        sel.style.cssText = "font-family:'IBM Plex Sans',sans-serif;font-size:12px;padding:6px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.08);color:#e2e8f0;width:100%;cursor:pointer;margin-bottom:6px;";
+
+        // POI categories group
+        if (poiCategories.length > 0) {
+          var poiGroup = document.createElement("optgroup");
+          poiGroup.label = "POI Categories";
+          poiCategories.forEach(function(cat) {
+            var opt = document.createElement("option");
+            opt.value = "poi_" + cat.id;
+            opt.textContent = cat.icon + " " + cat.name;
+            poiGroup.appendChild(opt);
+          });
+          sel.appendChild(poiGroup);
+        }
+
+        // Saved layers group
+        if (savedLayers.length > 0) {
+          var layerGroup = document.createElement("optgroup");
+          layerGroup.label = "Saved Layers";
+          savedLayers.forEach(function(sl) {
+            var opt = document.createElement("option");
+            opt.value = "layer_" + sl.id;
+            opt.textContent = sl.icon + " " + sl.name;
+            layerGroup.appendChild(opt);
+          });
+          sel.appendChild(layerGroup);
+        }
+
+        // New options
+        var newPOI = document.createElement("option");
+        newPOI.value = "__new_poi__";
+        newPOI.textContent = "＋ New POI Category";
+        sel.appendChild(newPOI);
+        var newLayer = document.createElement("option");
+        newLayer.value = "__new_layer__";
+        newLayer.textContent = "＋ New Saved Layer";
+        sel.appendChild(newLayer);
+
+        popDiv.appendChild(sel);
+
+        // Add button
+        var addBtn = document.createElement("button");
+        addBtn.textContent = "＋ Add to Map";
+        addBtn.style.cssText = "font-family:'IBM Plex Sans',sans-serif;font-size:13px;font-weight:600;padding:7px 0;border-radius:5px;border:none;background:#3b9eff;color:#fff;cursor:pointer;width:100%;margin-top:2px;";
+        addBtn.addEventListener("click", function(e) {
+          e.stopPropagation();
+          var finalName = nameInput.value.trim() || placeName;
+          var val = sel.value;
+          var point = { name: finalName, address: placeAddr, lat: lat, lng: lng };
+
+          if (val === "__new_poi__") {
+            var newCat = createPOICat("New Category", "📍", null);
+            addPOIPoint(newCat.id, point);
+            switchTab("poi");
+          } else if (val === "__new_layer__") {
+            var nl = createLayer();
+            addPlaceToLayer(nl.id, point);
+            switchTab("saved");
+          } else if (val.indexOf("poi_") === 0) {
+            var catId = parseInt(val.replace("poi_", ""));
+            addPOIPoint(catId, point);
+            switchTab("poi");
+          } else if (val.indexOf("layer_") === 0) {
+            var layerId = parseInt(val.replace("layer_", ""));
+            addPlaceToLayer(layerId, point);
+            switchTab("saved");
+          }
+          if (clickAddMarker) { map.removeLayer(clickAddMarker); clickAddMarker = null; }
+        });
+        popDiv.appendChild(addBtn);
+
+        // Replace temp marker with real one
+        if (clickAddMarker) map.removeLayer(clickAddMarker);
+        clickAddMarker = L.marker([lat, lng], {
+          icon: L.divIcon({ className: "", html: '<div style="width:24px;height:24px;border-radius:50%;background:#3b9eff;border:3px solid #fff;box-shadow:0 2px 8px rgba(59,158,255,0.5);"></div>', iconSize: [24, 24], iconAnchor: [12, 12] })
+        }).addTo(map);
+        clickAddMarker.bindPopup(popDiv, { maxWidth: 320, minWidth: 240 }).openPopup();
+        clickAddMarker.on("popupclose", function() {
+          if (clickAddMarker) { map.removeLayer(clickAddMarker); clickAddMarker = null; }
+        });
+      })
+      .catch(function(err) {
+        console.error("Reverse geocode error:", err);
+        if (clickAddMarker) { map.removeLayer(clickAddMarker); clickAddMarker = null; }
+      });
+  }
+
+  // Right-click on map to discover place
+  map.on("contextmenu", function(e) {
+    L.DomEvent.preventDefault(e);
+    reverseGeocode(e.latlng.lat, e.latlng.lng);
+  });
+
+  /* ══════════════════════════════════════════════════════
+     FILTER PANEL — right sidebar with table + filters
+     ══════════════════════════════════════════════════════ */
+  var filterPanelOpen = false;
+  var fpFilters = { sources: [], categories: [], submarkets: [] }; // selected filter values (empty = all)
+  var fpSortCol = null; // null | column key
+  var fpSortDir = "orig"; // "asc" | "desc" | "orig"
+  var fpAllRows = []; // master list, rebuilt on open
+  var fpHighlightedIdx = -1;
+  var fpHiddenMarkers = []; // markers we hid so we can restore
+
+  // Point-in-polygon (ray casting)
+  function pointInPoly(lat, lng, polyCoords) {
+    var inside = false;
+    for (var i = 0, j = polyCoords.length - 1; i < polyCoords.length; j = i++) {
+      var yi = polyCoords[i][0], xi = polyCoords[i][1];
+      var yj = polyCoords[j][0], xj = polyCoords[j][1];
+      if (((yi > lat) !== (yj > lat)) && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi))
+        inside = !inside;
+    }
+    return inside;
+  }
+
+  // Find which submarket a point is in
+  function findSubmarket(lat, lng) {
+    var names = Object.keys(costarBoundaries);
+    for (var i = 0; i < names.length; i++) {
+      if (pointInPoly(lat, lng, costarBoundaries[names[i]])) return names[i];
+    }
+    // Fallback: find nearest submarket center
+    var nearest = null, bestDist = Infinity;
+    submarkets.forEach(function(sm) {
+      var d = Math.pow(sm.lat - lat, 2) + Math.pow(sm.lng - lng, 2);
+      if (d < bestDist) { bestDist = d; nearest = sm.name; }
+    });
+    return nearest || "Unknown";
+  }
+
+  // Aggregate all points from POI categories + saved layers
+  function fpBuildRows() {
+    fpAllRows = [];
+    poiCategories.forEach(function(cat) {
+      cat.points.forEach(function(p, pi) {
+        fpAllRows.push({
+          name: p.name,
+          address: p.address || "",
+          sourceType: "poi",
+          sourceName: cat.name,
+          sourceIcon: cat.icon,
+          sourceColor: cat.color,
+          catId: cat.id,
+          pointIdx: pi,
+          lat: p.lat,
+          lng: p.lng,
+          submarket: findSubmarket(p.lat, p.lng),
+          _markerRef: cat.markers[pi] || null,
+          _catRef: cat
+        });
+      });
+    });
+    savedLayers.forEach(function(layer) {
+      layer.places.forEach(function(p, pi) {
+        fpAllRows.push({
+          name: p.name,
+          address: p.address || "",
+          sourceType: "layer",
+          sourceName: layer.name,
+          sourceIcon: layer.icon,
+          sourceColor: layer.color,
+          layerId: layer.id,
+          placeIdx: pi,
+          lat: p.lat,
+          lng: p.lng,
+          submarket: findSubmarket(p.lat, p.lng),
+          _markerRef: layer.mapMarkers[pi] || null,
+          _layerRef: layer
+        });
+      });
+    });
+  }
+
+  // Get filtered + sorted rows
+  function fpGetFilteredRows() {
+    var rows = fpAllRows.slice();
+    if (fpFilters.sources.length > 0) {
+      rows = rows.filter(function(r) { return fpFilters.sources.indexOf(r.sourceName) !== -1; });
+    }
+    if (fpFilters.categories.length > 0) {
+      rows = rows.filter(function(r) { return fpFilters.categories.indexOf(r.sourceType) !== -1; });
+    }
+    if (fpFilters.submarkets.length > 0) {
+      rows = rows.filter(function(r) { return fpFilters.submarkets.indexOf(r.submarket) !== -1; });
+    }
+    // Sort
+    if (fpSortCol && fpSortDir !== "orig") {
+      var dir = fpSortDir === "asc" ? 1 : -1;
+      rows.sort(function(a, b) {
+        var va = (a[fpSortCol] || "").toString().toLowerCase();
+        var vb = (b[fpSortCol] || "").toString().toLowerCase();
+        if (va < vb) return -1 * dir;
+        if (va > vb) return 1 * dir;
+        return 0;
+      });
+    }
+    return rows;
+  }
+
+  // Columns definition
+  var fpColumns = [
+    { key: "name", label: "Name" },
+    { key: "address", label: "Address" },
+    { key: "sourceName", label: "Source" },
+    { key: "sourceType", label: "Type" },
+    { key: "submarket", label: "Submarket" }
+  ];
+
+  // Render table header
+  function fpRenderHeader() {
+    var tr = document.getElementById("fp-thead-row");
+    tr.innerHTML = "";
+    fpColumns.forEach(function(col) {
+      var th = document.createElement("th");
+      th.setAttribute("data-col", col.key);
+      var sortIcon = "⇅";
+      var isSorted = fpSortCol === col.key && fpSortDir !== "orig";
+      if (isSorted) {
+        sortIcon = fpSortDir === "asc" ? "↑" : "↓";
+        th.classList.add("sorted");
+      }
+      th.innerHTML = col.label + ' <span class="sort-icon">' + sortIcon + '</span>';
+      th.addEventListener("click", function() {
+        if (fpSortCol === col.key) {
+          // Cycle: asc → desc → orig
+          if (fpSortDir === "asc") fpSortDir = "desc";
+          else if (fpSortDir === "desc") { fpSortDir = "orig"; fpSortCol = null; }
+          else { fpSortDir = "asc"; }
+        } else {
+          fpSortCol = col.key;
+          fpSortDir = "asc";
+        }
+        fpRenderHeader();
+        fpRenderTable();
+      });
+      tr.appendChild(th);
+    });
+  }
+
+  // Render table body
+  function fpRenderTable() {
+    var rows = fpGetFilteredRows();
+    var tbody = document.getElementById("fp-tbody");
+    tbody.innerHTML = "";
+    fpHighlightedIdx = -1;
+
+    rows.forEach(function(row, idx) {
+      var tr = document.createElement("tr");
+      tr.setAttribute("data-idx", idx);
+
+      // Name
+      var tdName = document.createElement("td");
+      tdName.textContent = row.name;
+      tdName.title = row.name;
+      tr.appendChild(tdName);
+
+      // Address
+      var tdAddr = document.createElement("td");
+      tdAddr.textContent = row.address;
+      tdAddr.title = row.address;
+      tr.appendChild(tdAddr);
+
+      // Source
+      var tdSrc = document.createElement("td");
+      tdSrc.innerHTML = '<span style="font-size:12px;">' + row.sourceIcon + '</span> ' + row.sourceName;
+      tdSrc.title = row.sourceName;
+      tr.appendChild(tdSrc);
+
+      // Type
+      var tdType = document.createElement("td");
+      var badge = document.createElement("span");
+      badge.className = "fp-source-badge " + row.sourceType;
+      badge.textContent = row.sourceType === "poi" ? "POI" : "Layer";
+      tdType.appendChild(badge);
+      tr.appendChild(tdType);
+
+      // Submarket
+      var tdSM = document.createElement("td");
+      tdSM.textContent = row.submarket;
+      tdSM.title = row.submarket;
+      tr.appendChild(tdSM);
+
+      // Click to fly to point
+      tr.addEventListener("click", function() {
+        map.flyTo([row.lat, row.lng], 16, { duration: 1 });
+        if (row._markerRef) {
+          setTimeout(function() { row._markerRef.openPopup(); }, 800);
+        }
+        // Highlight row
+        document.querySelectorAll(".fp-table tbody tr.fp-highlighted").forEach(function(r) { r.classList.remove("fp-highlighted"); });
+        tr.classList.add("fp-highlighted");
+      });
+
+      tbody.appendChild(tr);
+    });
+
+    // Update count
+    document.getElementById("fp-count").textContent = rows.length + " of " + fpAllRows.length + " properties shown";
+    document.getElementById("fp-showing").textContent = "(" + rows.length + ")";
+
+    // Sync map markers
+    fpSyncMapMarkers(rows);
+  }
+
+  // Show/hide markers on the map based on filter
+  function fpSyncMapMarkers(visibleRows) {
+    // Build set of visible marker refs
+    var visibleSet = [];
+    visibleRows.forEach(function(r) { if (r._markerRef) visibleSet.push(r._markerRef); });
+
+    // For all rows, show if in visibleSet, hide if not
+    fpAllRows.forEach(function(row) {
+      if (!row._markerRef) return;
+      var isVisible = visibleSet.indexOf(row._markerRef) !== -1;
+      if (isVisible) {
+        // Show if the category/layer is toggled on
+        var parentVisible = true;
+        if (row.sourceType === "poi" && row._catRef) parentVisible = row._catRef.visible;
+        if (row.sourceType === "layer" && row._layerRef) parentVisible = row._layerRef.visible;
+        if (parentVisible && !map.hasLayer(row._markerRef)) {
+          row._markerRef.addTo(map);
+        }
+      } else {
+        if (map.hasLayer(row._markerRef)) {
+          map.removeLayer(row._markerRef);
+        }
+      }
+    });
+  }
+
+  // Build filter dropdowns
+  function fpBuildDropdowns() {
+    // Source dropdown — unique source names
+    var sources = [];
+    fpAllRows.forEach(function(r) {
+      if (sources.indexOf(r.sourceName) === -1) sources.push(r.sourceName);
+    });
+    sources.sort();
+    var ddSource = document.getElementById("fp-dd-source");
+    ddSource.innerHTML = "";
+    sources.forEach(function(s) {
+      var item = document.createElement("div");
+      item.className = "fp-dd-item" + (fpFilters.sources.indexOf(s) !== -1 ? " selected" : "");
+      item.innerHTML = '<div class="fp-dd-check">✓</div><span>' + s + '</span>';
+      item.addEventListener("click", function(e) {
+        e.stopPropagation();
+        var idx = fpFilters.sources.indexOf(s);
+        if (idx === -1) fpFilters.sources.push(s);
+        else fpFilters.sources.splice(idx, 1);
+        item.classList.toggle("selected");
+        fpUpdateFilterBtns();
+        fpRenderTable();
+      });
+      ddSource.appendChild(item);
+    });
+
+    // Category dropdown (POI vs Layer)
+    var types = [{ key: "poi", label: "POI Categories" }, { key: "layer", label: "Saved Layers" }];
+    var ddCat = document.getElementById("fp-dd-category");
+    ddCat.innerHTML = "";
+    types.forEach(function(t) {
+      var count = fpAllRows.filter(function(r) { return r.sourceType === t.key; }).length;
+      var item = document.createElement("div");
+      item.className = "fp-dd-item" + (fpFilters.categories.indexOf(t.key) !== -1 ? " selected" : "");
+      item.innerHTML = '<div class="fp-dd-check">✓</div><span>' + t.label + ' (' + count + ')</span>';
+      item.addEventListener("click", function(e) {
+        e.stopPropagation();
+        var idx = fpFilters.categories.indexOf(t.key);
+        if (idx === -1) fpFilters.categories.push(t.key);
+        else fpFilters.categories.splice(idx, 1);
+        item.classList.toggle("selected");
+        fpUpdateFilterBtns();
+        fpRenderTable();
+      });
+      ddCat.appendChild(item);
+    });
+
+    // Submarket dropdown
+    var subs = [];
+    fpAllRows.forEach(function(r) {
+      if (subs.indexOf(r.submarket) === -1) subs.push(r.submarket);
+    });
+    subs.sort();
+    var ddSub = document.getElementById("fp-dd-submarket");
+    ddSub.innerHTML = "";
+    subs.forEach(function(s) {
+      var item = document.createElement("div");
+      item.className = "fp-dd-item" + (fpFilters.submarkets.indexOf(s) !== -1 ? " selected" : "");
+      item.innerHTML = '<div class="fp-dd-check">✓</div><span>' + s + '</span>';
+      item.addEventListener("click", function(e) {
+        e.stopPropagation();
+        var idx = fpFilters.submarkets.indexOf(s);
+        if (idx === -1) fpFilters.submarkets.push(s);
+        else fpFilters.submarkets.splice(idx, 1);
+        item.classList.toggle("selected");
+        fpUpdateFilterBtns();
+        fpRenderTable();
+      });
+      ddSub.appendChild(item);
+    });
+  }
+
+  function fpUpdateFilterBtns() {
+    var btnSrc = document.getElementById("fp-btn-source");
+    var btnCat = document.getElementById("fp-btn-category");
+    var btnSub = document.getElementById("fp-btn-submarket");
+    btnSrc.className = "fp-filter-btn" + (fpFilters.sources.length > 0 ? " has-filter" : "");
+    btnSrc.innerHTML = "Source" + (fpFilters.sources.length > 0 ? " (" + fpFilters.sources.length + ")" : "") + ' <span class="fp-arrow">▾</span>';
+    btnCat.className = "fp-filter-btn" + (fpFilters.categories.length > 0 ? " has-filter" : "");
+    btnCat.innerHTML = "Type" + (fpFilters.categories.length > 0 ? " (" + fpFilters.categories.length + ")" : "") + ' <span class="fp-arrow">▾</span>';
+    btnSub.className = "fp-filter-btn" + (fpFilters.submarkets.length > 0 ? " has-filter" : "");
+    btnSub.innerHTML = "Submarket" + (fpFilters.submarkets.length > 0 ? " (" + fpFilters.submarkets.length + ")" : "") + ' <span class="fp-arrow">▾</span>';
+  }
+
+  // Toggle dropdowns
+  function fpToggleDD(ddId) {
+    var dd = document.getElementById(ddId);
+    var wasOpen = dd.classList.contains("open");
+    document.querySelectorAll(".fp-dropdown.open").forEach(function(d) { d.classList.remove("open"); });
+    if (!wasOpen) dd.classList.add("open");
+  }
+  document.getElementById("fp-btn-source").addEventListener("click", function(e) { e.stopPropagation(); fpToggleDD("fp-dd-source"); });
+  document.getElementById("fp-btn-category").addEventListener("click", function(e) { e.stopPropagation(); fpToggleDD("fp-dd-category"); });
+  document.getElementById("fp-btn-submarket").addEventListener("click", function(e) { e.stopPropagation(); fpToggleDD("fp-dd-submarket"); });
+
+  // Close dropdowns on outside click
+  document.addEventListener("click", function() {
+    document.querySelectorAll(".fp-dropdown.open").forEach(function(d) { d.classList.remove("open"); });
+  });
+
+  // Clear all filters
+  document.getElementById("fp-clear").addEventListener("click", function() {
+    fpFilters = { sources: [], categories: [], submarkets: [] };
+    fpBuildDropdowns();
+    fpUpdateFilterBtns();
+    fpRenderTable();
+  });
+
+  // Open / close filter panel
+  function openFilterPanel() {
+    filterPanelOpen = true;
+    // Collapse left sidebar
+    document.getElementById("sidebar").classList.add("collapsed");
+    // Build data
+    fpBuildRows();
+    fpFilters = { sources: [], categories: [], submarkets: [] };
+    fpSortCol = null;
+    fpSortDir = "orig";
+    fpBuildDropdowns();
+    fpUpdateFilterBtns();
+    fpRenderHeader();
+    fpRenderTable();
+    // Show panel
+    document.getElementById("filter-panel").classList.add("active");
+    document.getElementById("btn-filter").classList.add("active");
+  }
+
+  function closeFilterPanel() {
+    filterPanelOpen = false;
+    document.getElementById("filter-panel").classList.remove("active");
+    document.getElementById("btn-filter").classList.remove("active");
+    // Restore all markers to their category/layer visibility
+    fpAllRows.forEach(function(row) {
+      if (!row._markerRef) return;
+      var shouldShow = false;
+      if (row.sourceType === "poi" && row._catRef) shouldShow = row._catRef.visible;
+      if (row.sourceType === "layer" && row._layerRef) shouldShow = row._layerRef.visible;
+      if (shouldShow && !map.hasLayer(row._markerRef)) row._markerRef.addTo(map);
+      else if (!shouldShow && map.hasLayer(row._markerRef)) map.removeLayer(row._markerRef);
+    });
+  }
+
+  document.getElementById("btn-filter").addEventListener("click", function() {
+    if (filterPanelOpen) closeFilterPanel();
+    else openFilterPanel();
+  });
+  document.getElementById("fp-close").addEventListener("click", closeFilterPanel);
+
+</script>
+</body>
+</html>
