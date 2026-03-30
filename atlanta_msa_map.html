@@ -1751,7 +1751,7 @@
             var cl = p.color || layer.color;
             var marker = L.marker([p.lat, p.lng], { icon: makeSavedMarkerIcon(cl, ic) });
             var pi = layer.places.indexOf(p);
-            marker.bindPopup(buildPlacePopupEl(p, layer.id, pi), { maxWidth: 300 });
+            marker.bindPopup(buildPlacePopupEl(p, layer.id, pi), { maxWidth: 340 });
             if (layer.visible) marker.addTo(map);
             layer.mapMarkers.push(marker);
           });
@@ -1846,19 +1846,93 @@
 
   function buildPlacePopupEl(place, layerId, placeIdx) {
     var div = document.createElement("div");
-    div.style.cssText = "font:400 13px/1.5 IBM Plex Sans,sans-serif;max-width:280px;color:#e2e8f0;";
+    div.style.cssText = "font:400 13px/1.5 IBM Plex Sans,sans-serif;max-width:320px;color:#e2e8f0;";
     div.innerHTML = '<strong style="font-weight:600;color:#fff;">' + place.name + '</strong><br><span style="font-size:11px;color:#94a3b8;">' + place.address + '</span>';
-    // Show existing fields
-    if (place.fields && place.fields.length > 0) {
-      var fieldsDiv = document.createElement("div");
-      fieldsDiv.style.cssText = "margin-top:6px;border-top:1px solid rgba(255,255,255,0.1);padding-top:6px;";
-      place.fields.forEach(function(f) {
-        var row = document.createElement("div");
-        row.style.cssText = "display:flex;justify-content:space-between;font-size:11px;padding:2px 0;";
-        row.innerHTML = '<span style="color:#94a3b8;">' + f.label + '</span><span style="font-weight:600;color:#fff;">' + f.value + '</span>';
-        fieldsDiv.appendChild(row);
+
+    // Build tabs if opex data exists
+    var tabs = [];
+    tabs.push({label:"Summary", type:"summary"});
+    if (place.opex) {
+      place.opex.forEach(function(ox) { tabs.push({label:ox.label, type:"opex", data:ox}); });
+    }
+
+    if (tabs.length > 1) {
+      // Tab bar
+      var tabBar = document.createElement("div");
+      tabBar.style.cssText = "display:flex;gap:0;margin-top:8px;border-bottom:2px solid rgba(255,255,255,0.15);";
+      var panels = [];
+      tabs.forEach(function(t, ti) {
+        var btn = document.createElement("button");
+        btn.textContent = t.label;
+        btn.style.cssText = "font-family:IBM Plex Sans,sans-serif;font-size:11px;font-weight:600;padding:5px 10px;border:none;cursor:pointer;background:transparent;color:#94a3b8;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all 0.15s;";
+        if (ti === 0) { btn.style.color = "#3b9eff"; btn.style.borderBottomColor = "#3b9eff"; }
+        btn.addEventListener("click", function(e) {
+          e.stopPropagation(); e.preventDefault();
+          panels.forEach(function(p, pi) {
+            p.style.display = pi === ti ? "block" : "none";
+            tabBar.children[pi].style.color = pi === ti ? "#3b9eff" : "#94a3b8";
+            tabBar.children[pi].style.borderBottomColor = pi === ti ? "#3b9eff" : "transparent";
+          });
+        });
+        tabBar.appendChild(btn);
       });
-      div.appendChild(fieldsDiv);
+      div.appendChild(tabBar);
+
+      // Panels
+      tabs.forEach(function(t, ti) {
+        var panel = document.createElement("div");
+        panel.style.cssText = "display:" + (ti === 0 ? "block" : "none") + ";padding-top:6px;";
+        if (t.type === "summary") {
+          if (place.fields && place.fields.length > 0) {
+            place.fields.forEach(function(f) {
+              var row = document.createElement("div");
+              row.style.cssText = "display:flex;justify-content:space-between;font-size:11px;padding:2px 0;";
+              row.innerHTML = '<span style="color:#94a3b8;">' + f.label + '</span><span style="font-weight:600;color:#fff;">' + f.value + '</span>';
+              panel.appendChild(row);
+            });
+          }
+        } else if (t.type === "opex") {
+          var hdr = document.createElement("div");
+          hdr.style.cssText = "font-size:10px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;padding-bottom:4px;";
+          hdr.textContent = "Operating Expenses (Per Unit)";
+          panel.appendChild(hdr);
+          var opexFields = [
+            {key:"personnel",label:"Personnel"},{key:"administrative",label:"Administrative"},
+            {key:"marketing",label:"Marketing/Advertising"},{key:"contractServices",label:"Contract Services"},
+            {key:"repairsMaint",label:"Repairs & Maintenance"},{key:"turnover",label:"Turnover"},
+            {key:"utilities",label:"Utilities"},{key:"realEstateTaxes",label:"Real Estate Taxes"},
+            {key:"insurance",label:"Insurance"}
+          ];
+          opexFields.forEach(function(of) {
+            var val = t.data[of.key] || "--";
+            var row = document.createElement("div");
+            row.style.cssText = "display:flex;justify-content:space-between;font-size:11px;padding:2px 0;";
+            row.innerHTML = '<span style="color:#94a3b8;">' + of.label + '</span><span style="font-weight:600;color:#fff;">' + val + '</span>';
+            panel.appendChild(row);
+          });
+          if (t.data.totalOpex) {
+            var tot = document.createElement("div");
+            tot.style.cssText = "display:flex;justify-content:space-between;font-size:11px;padding:4px 0 2px;margin-top:4px;border-top:1px solid rgba(255,255,255,0.15);font-weight:700;";
+            tot.innerHTML = '<span style="color:#e2e8f0;">Total OpEx</span><span style="color:#3b9eff;">' + t.data.totalOpex + '</span>';
+            panel.appendChild(tot);
+          }
+        }
+        panels.push(panel);
+        div.appendChild(panel);
+      });
+    } else {
+      // No tabs - original layout
+      if (place.fields && place.fields.length > 0) {
+        var fieldsDiv = document.createElement("div");
+        fieldsDiv.style.cssText = "margin-top:6px;border-top:1px solid rgba(255,255,255,0.1);padding-top:6px;";
+        place.fields.forEach(function(f) {
+          var row = document.createElement("div");
+          row.style.cssText = "display:flex;justify-content:space-between;font-size:11px;padding:2px 0;";
+          row.innerHTML = '<span style="color:#94a3b8;">' + f.label + '</span><span style="font-weight:600;color:#fff;">' + f.value + '</span>';
+          fieldsDiv.appendChild(row);
+        });
+        div.appendChild(fieldsDiv);
+      }
     }
     // Edit Fields button
     var btnRow = document.createElement("div");
@@ -1912,7 +1986,7 @@
       var ic = p.icon || layer.icon;
       var cl = p.color || layer.color;
       var marker = L.marker([p.lat, p.lng], { icon: makeSavedMarkerIcon(cl, ic) });
-      marker.bindPopup(buildPlacePopupEl(p, layer.id, pi), { maxWidth: 300 });
+      marker.bindPopup(buildPlacePopupEl(p, layer.id, pi), { maxWidth: 340 });
       if (layer.visible) marker.addTo(map);
       layer.mapMarkers.push(marker);
     });
@@ -2320,27 +2394,69 @@
     });
   }
 
-  var SAVED_LAYER_VERSION = 1; // bump when default saved layers change
+  var SAVED_LAYER_VERSION = 2; // bump when default saved layers change
 
   function initDefaultSavedLayers() {
     var db = createLayer("DealBuddy");
     db.icon = "🏘️";
     db.color = "#ef4444";
     var deals = [
-      {name:"Artesia Big Creek", lat:34.0920, lng:-84.2510, address:"6405 Rex Lane, Alpharetta, GA 30005", fields:[{label:"Vintage",value:"2020"},{label:"Units",value:"269"},{label:"Avg SF",value:"1,010"},{label:"Avg Rent",value:"$2,070"},{label:"PSF",value:"$2.05"}]},
-      {name:"Briarhill Apartment Homes", lat:33.8180, lng:-84.3560, address:"1470 Sheridan Road NE, Atlanta, GA 30324", fields:[{label:"Vintage",value:"1988"},{label:"Units",value:"292"},{label:"Avg SF",value:"872"},{label:"Avg Rent",value:"$1,497"},{label:"PSF",value:"$1.72"}]},
-      {name:"Capella Apartment Homes", lat:33.8340, lng:-84.2160, address:"6168 S. Norcross Tucker Rd, Tucker, GA 30084", fields:[{label:"Vintage",value:"1985"},{label:"Units",value:"320"},{label:"Avg SF",value:"1,059"},{label:"Avg Rent",value:"$1,476"},{label:"PSF",value:"$1.39"}]},
-      {name:"Elan Brookwood", lat:33.8560, lng:-84.6220, address:"3890 Floyd Road, Austell, GA 30106", fields:[{label:"Vintage",value:"2024"},{label:"Units",value:"395"},{label:"Avg SF",value:"1,004"},{label:"Avg Rent",value:"$1,983"},{label:"PSF",value:"$1.97"}]},
-      {name:"Enclave at Roswell", lat:34.0530, lng:-84.3130, address:"11251 Alpharetta Hwy, Roswell, GA 30076", fields:[{label:"Vintage",value:"1985"},{label:"Units",value:"236"},{label:"Avg SF",value:"925"},{label:"Avg Rent",value:"$1,523"},{label:"PSF",value:"$1.64"}]},
-      {name:"Gables Midtown", lat:33.7830, lng:-84.3680, address:"925 Monroe Drive, Atlanta, GA 30308", fields:[{label:"Vintage",value:"2009"},{label:"Units",value:"345"},{label:"Avg SF",value:"903"},{label:"Avg Rent",value:"$1,722"},{label:"PSF",value:"$1.91"}]},
-      {name:"Lakeside at Arbor Place", lat:33.7290, lng:-84.7280, address:"3005 GA-5, Douglasville, GA 30135", fields:[{label:"Vintage",value:"1988/1996"},{label:"Units",value:"246"},{label:"Avg SF",value:"973"},{label:"Avg Rent",value:"$1,408"},{label:"PSF",value:"$1.45"}]},
-      {name:"Montrose Berkeley Lake", lat:34.0030, lng:-84.1330, address:"3750 Peachtree Industrial Blvd, Duluth, GA 30096", fields:[{label:"Vintage",value:"1988"},{label:"Units",value:"492"},{label:"Avg SF",value:"964"},{label:"Avg Rent",value:"$1,432"},{label:"PSF",value:"$1.49"}]},
-      {name:"Parc 85", lat:34.0100, lng:-84.1560, address:"2620 N Berkeley Lake Rd NW, Duluth, GA 30096", fields:[{label:"Vintage",value:"2002"},{label:"Units",value:"344"},{label:"Avg SF",value:"987"},{label:"Avg Rent",value:"$1,582"},{label:"PSF",value:"$1.60"}]},
-      {name:"Perimeter Gardens at Georgetown", lat:33.9340, lng:-84.3260, address:"100 Azalea Garden Dr, Dunwoody, GA 30338", fields:[{label:"Vintage",value:"2006"},{label:"Units",value:"245"},{label:"Avg SF",value:"959"},{label:"Avg Rent",value:"$1,600"},{label:"PSF",value:"$1.67"}]},
-      {name:"Preserve at Mill Creek", lat:34.0680, lng:-84.0150, address:"1400 Mall of Georgia Blvd, Buford, GA 30519", fields:[{label:"Vintage",value:"2001"},{label:"Units",value:"400"},{label:"Avg SF",value:"1,015"},{label:"Avg Rent",value:"$1,612"},{label:"PSF",value:"$1.59"}]},
-      {name:"Reserve at Gwinnett", lat:33.9340, lng:-84.0590, address:"1780 Graves Rd, Norcross, GA 30093", fields:[{label:"Vintage",value:"1999"},{label:"Units",value:"370"},{label:"Avg SF",value:"1,161"},{label:"Avg Rent",value:"$1,563"},{label:"PSF",value:"$1.36"}]},
-      {name:"The Vivian", lat:33.7310, lng:-84.4110, address:"1246 Allene Ave SW, Atlanta, GA 30310", fields:[{label:"Vintage",value:"2023"},{label:"Units",value:"325"},{label:"Avg SF",value:"813"},{label:"Avg Rent",value:"$1,780"},{label:"PSF",value:"$2.19"}]},
-      {name:"Trace Midtown", lat:33.7730, lng:-84.3850, address:"782 Peachtree St NE, Atlanta, GA 30308", fields:[{label:"Vintage",value:"2016"},{label:"Units",value:"290"},{label:"Avg SF",value:"903"},{label:"Avg Rent",value:"$2,404"},{label:"PSF",value:"$2.66"}]}
+      {name:"Artesia Big Creek", lat:34.0920, lng:-84.2510, address:"6405 Rex Lane, Alpharetta, GA 30005", fields:[{label:"Vintage",value:"2020"},{label:"Units",value:"269"},{label:"Avg SF",value:"1,010"},{label:"Avg Rent",value:"$2,070"},{label:"PSF",value:"$2.05"}], opex:[
+        {label:"T12",personnel:"$1,882",administrative:"$560",marketing:"$422",contractServices:"--",repairsMaint:"$644",turnover:"$168",utilities:"$1,292",realEstateTaxes:"$2,625",insurance:"$611",totalOpex:"$8,736"},
+        {label:"Proforma",personnel:"$1,775",administrative:"$450",marketing:"$350",contractServices:"--",repairsMaint:"$665",turnover:"$200",utilities:"$1,640",realEstateTaxes:"$2,625",insurance:"$550",totalOpex:"$8,688"}
+      ]},
+      {name:"Briarhill Apartment Homes", lat:33.8180, lng:-84.3560, address:"1470 Sheridan Road NE, Atlanta, GA 30324", fields:[{label:"Vintage",value:"1988"},{label:"Units",value:"292"},{label:"Avg SF",value:"872"},{label:"Avg Rent",value:"$1,497"},{label:"PSF",value:"$1.72"}], opex:[
+        {label:"T12",personnel:"$1,543",administrative:"$480",marketing:"$334",contractServices:"--",repairsMaint:"$407",turnover:"$276",utilities:"$797",realEstateTaxes:"$3,273",insurance:"$650",totalOpex:"$9,079"},
+        {label:"Proforma",personnel:"$1,421",administrative:"$425",marketing:"$250",contractServices:"--",repairsMaint:"$407",turnover:"$250",utilities:"$821",realEstateTaxes:"$3,273",insurance:"$650",totalOpex:"$8,943"}
+      ]},
+      {name:"Capella Apartment Homes", lat:33.8340, lng:-84.2160, address:"6168 S. Norcross Tucker Rd, Tucker, GA 30084", fields:[{label:"Vintage",value:"1985"},{label:"Units",value:"320"},{label:"Avg SF",value:"1,059"},{label:"Avg Rent",value:"$1,476"},{label:"PSF",value:"$1.39"}], opex:[
+        {label:"T12",personnel:"$1,546",administrative:"$314",marketing:"$111",contractServices:"$306",repairsMaint:"$456",turnover:"$589",utilities:"$2,034",realEstateTaxes:"$2,022",insurance:"$1,406",totalOpex:"$9,324"},
+        {label:"Proforma",personnel:"$1,500",administrative:"$300",marketing:"$109",contractServices:"$300",repairsMaint:"$375",turnover:"$400",utilities:"$2,109",realEstateTaxes:"$2,022",insurance:"$825",totalOpex:"$8,513"}
+      ]},
+      {name:"Elan Brookwood", lat:33.8560, lng:-84.6220, address:"3890 Floyd Road, Austell, GA 30106", fields:[{label:"Vintage",value:"2024"},{label:"Units",value:"395"},{label:"Avg SF",value:"1,004"},{label:"Avg Rent",value:"$1,983"},{label:"PSF",value:"$1.97"}], opex:[
+        {label:"T12",personnel:"$1,903",administrative:"$422",marketing:"$612",contractServices:"--",repairsMaint:"$837",turnover:"$228",utilities:"$1,289",realEstateTaxes:"$2,088",insurance:"$532",totalOpex:"$8,324"},
+        {label:"Proforma",personnel:"$1,648",administrative:"$300",marketing:"$325",contractServices:"--",repairsMaint:"$840",turnover:"$225",utilities:"$1,185",realEstateTaxes:"$2,614",insurance:"$556",totalOpex:"$8,248"}
+      ]},
+      {name:"Enclave at Roswell", lat:34.0530, lng:-84.3130, address:"11251 Alpharetta Hwy, Roswell, GA 30076", fields:[{label:"Vintage",value:"1985"},{label:"Units",value:"236"},{label:"Avg SF",value:"925"},{label:"Avg Rent",value:"$1,523"},{label:"PSF",value:"$1.64"}], opex:[
+        {label:"T12",personnel:"$1,807",administrative:"$317",marketing:"$342",contractServices:"--",repairsMaint:"$449",turnover:"$465",utilities:"$1,351",realEstateTaxes:"$2,390",insurance:"$700",totalOpex:"$9,261"},
+        {label:"Proforma",personnel:"$1,600",administrative:"$317",marketing:"$300",contractServices:"--",repairsMaint:"$449",turnover:"$365",utilities:"$1,391",realEstateTaxes:"$2,390",insurance:"$700",totalOpex:"$9,030"}
+      ]},
+      {name:"Gables Midtown", lat:33.7830, lng:-84.3680, address:"925 Monroe Drive, Atlanta, GA 30308", fields:[{label:"Vintage",value:"2009"},{label:"Units",value:"345"},{label:"Avg SF",value:"903"},{label:"Avg Rent",value:"$1,722"},{label:"PSF",value:"$1.91"}], opex:[
+        {label:"T12",personnel:"$1,915",administrative:"$597",marketing:"$366",contractServices:"--",repairsMaint:"$791",turnover:"$338",utilities:"$1,306",realEstateTaxes:"$3,802",insurance:"$407",totalOpex:"$10,804"},
+        {label:"Proforma",personnel:"$1,569",administrative:"$300",marketing:"$300",contractServices:"--",repairsMaint:"$500",turnover:"$270",utilities:"$1,345",realEstateTaxes:"$3,779",insurance:"$400",totalOpex:"$9,519"}
+      ]},
+      {name:"Lakeside at Arbor Place", lat:33.7290, lng:-84.7280, address:"3005 GA-5, Douglasville, GA 30135", fields:[{label:"Vintage",value:"1988/1996"},{label:"Units",value:"246"},{label:"Avg SF",value:"973"},{label:"Avg Rent",value:"$1,408"},{label:"PSF",value:"$1.45"}], opex:[
+        {label:"T12",personnel:"$1,916",administrative:"$364",marketing:"$202",contractServices:"--",repairsMaint:"$852",turnover:"$508",utilities:"$1,067",realEstateTaxes:"$1,915",insurance:"$818",totalOpex:"$7,965"},
+        {label:"Proforma",personnel:"$1,702",administrative:"$300",marketing:"$200",contractServices:"--",repairsMaint:"$750",turnover:"$300",utilities:"$1,099",realEstateTaxes:"$1,915",insurance:"$750",totalOpex:"$7,576"}
+      ]},
+      {name:"Montrose Berkeley Lake", lat:34.0030, lng:-84.1330, address:"3750 Peachtree Industrial Blvd, Duluth, GA 30096", fields:[{label:"Vintage",value:"1988"},{label:"Units",value:"492"},{label:"Avg SF",value:"964"},{label:"Avg Rent",value:"$1,432"},{label:"PSF",value:"$1.49"}], opex:[
+        {label:"T12",personnel:"$1,558",administrative:"$273",marketing:"$324",contractServices:"--",repairsMaint:"$169",turnover:"$218",utilities:"$1,388",realEstateTaxes:"$2,386",insurance:"$564",totalOpex:"$7,508"},
+        {label:"Proforma",personnel:"$1,596",administrative:"$280",marketing:"$332",contractServices:"--",repairsMaint:"$173",turnover:"$223",utilities:"$1,423",realEstateTaxes:"$2,386",insurance:"$650",totalOpex:"$7,739"}
+      ]},
+      {name:"Parc 85", lat:34.0100, lng:-84.1560, address:"2620 N Berkeley Lake Rd NW, Duluth, GA 30096", fields:[{label:"Vintage",value:"2002"},{label:"Units",value:"344"},{label:"Avg SF",value:"987"},{label:"Avg Rent",value:"$1,582"},{label:"PSF",value:"$1.60"}], opex:[
+        {label:"T12",personnel:"$1,643",administrative:"$477",marketing:"$168",contractServices:"--",repairsMaint:"$565",turnover:"$313",utilities:"$862",realEstateTaxes:"$3,373",insurance:"$565",totalOpex:"$8,822"},
+        {label:"Proforma",personnel:"$1,650",administrative:"$450",marketing:"$175",contractServices:"--",repairsMaint:"$550",turnover:"$325",utilities:"$888",realEstateTaxes:"$3,233",insurance:"$600",totalOpex:"$8,727"}
+      ]},
+      {name:"Perimeter Gardens at Georgetown", lat:33.9340, lng:-84.3260, address:"100 Azalea Garden Dr, Dunwoody, GA 30338", fields:[{label:"Vintage",value:"2006"},{label:"Units",value:"245"},{label:"Avg SF",value:"959"},{label:"Avg Rent",value:"$1,600"},{label:"PSF",value:"$1.67"}], opex:[
+        {label:"T3 Expenses",personnel:"$2,195",administrative:"$346",marketing:"$119",contractServices:"--",repairsMaint:"$552",turnover:"$134",utilities:"$944",realEstateTaxes:"$3,124",insurance:"$755",totalOpex:"$8,781"},
+        {label:"Proforma",personnel:"$1,670",administrative:"$300",marketing:"$150",contractServices:"--",repairsMaint:"$655",turnover:"$230",utilities:"$1,355",realEstateTaxes:"$3,124",insurance:"$650",totalOpex:"$8,766"}
+      ]},
+      {name:"Preserve at Mill Creek", lat:34.0680, lng:-84.0150, address:"1400 Mall of Georgia Blvd, Buford, GA 30519", fields:[{label:"Vintage",value:"2001"},{label:"Units",value:"400"},{label:"Avg SF",value:"1,015"},{label:"Avg Rent",value:"$1,612"},{label:"PSF",value:"$1.59"}], opex:[
+        {label:"T12",personnel:"$1,576",administrative:"$500",marketing:"$367",contractServices:"--",repairsMaint:"$311",turnover:"$176",utilities:"$1,055",realEstateTaxes:"$2,540",insurance:"$784",totalOpex:"$8,214"},
+        {label:"Proforma",personnel:"$1,600",administrative:"$500",marketing:"$400",contractServices:"--",repairsMaint:"$325",turnover:"$200",utilities:"$1,087",realEstateTaxes:"$2,794",insurance:"$650",totalOpex:"$8,380"}
+      ]},
+      {name:"Reserve at Gwinnett", lat:33.9340, lng:-84.0590, address:"1780 Graves Rd, Norcross, GA 30093", fields:[{label:"Vintage",value:"1999"},{label:"Units",value:"370"},{label:"Avg SF",value:"1,161"},{label:"Avg Rent",value:"$1,563"},{label:"PSF",value:"$1.36"}], opex:[
+        {label:"T12",personnel:"$1,935",administrative:"$276",marketing:"$282",contractServices:"--",repairsMaint:"$833",turnover:"$847",utilities:"$1,303",realEstateTaxes:"$2,015",insurance:"$700",totalOpex:"$9,268"},
+        {label:"Proforma",personnel:"$1,812",administrative:"$276",marketing:"$282",contractServices:"--",repairsMaint:"$450",turnover:"$275",utilities:"$1,290",realEstateTaxes:"$2,015",insurance:"$700",totalOpex:"$8,301"}
+      ]},
+      {name:"The Vivian", lat:33.7310, lng:-84.4110, address:"1246 Allene Ave SW, Atlanta, GA 30310", fields:[{label:"Vintage",value:"2023"},{label:"Units",value:"325"},{label:"Avg SF",value:"813"},{label:"Avg Rent",value:"$1,780"},{label:"PSF",value:"$2.19"}], opex:[
+        {label:"T12",personnel:"$2,053",administrative:"$471",marketing:"$731",contractServices:"--",repairsMaint:"$1,007",turnover:"$331",utilities:"$1,712",realEstateTaxes:"$2,748",insurance:"$760",totalOpex:"$7,873"},
+        {label:"Proforma",personnel:"$1,654",administrative:"$425",marketing:"$350",contractServices:"--",repairsMaint:"$805",turnover:"$200",utilities:"$1,499",realEstateTaxes:"$2,748",insurance:"$650",totalOpex:"$6,194"}
+      ]},
+      {name:"Trace Midtown", lat:33.7730, lng:-84.3850, address:"782 Peachtree St NE, Atlanta, GA 30308", fields:[{label:"Vintage",value:"2016"},{label:"Units",value:"290"},{label:"Avg SF",value:"903"},{label:"Avg Rent",value:"$2,404"},{label:"PSF",value:"$2.66"}], opex:[
+        {label:"T12",personnel:"$1,876",administrative:"$644",marketing:"$414",contractServices:"$1,421",repairsMaint:"$2,144",turnover:"$1,082",utilities:"$1,606",realEstateTaxes:"$3,937",insurance:"$1,084",totalOpex:"$13,336"},
+        {label:"Proforma",personnel:"$2,095",administrative:"$450",marketing:"$350",contractServices:"$1,150",repairsMaint:"$1,015",turnover:"$400",utilities:"$1,595",realEstateTaxes:"$4,372",insurance:"$700",totalOpex:"$12,032"}
+      ]}
     ];
     deals.forEach(function(d) { addPlaceToLayer(db.id, d); });
   }
@@ -2350,15 +2466,47 @@
   if (!loadPOIState()) {
     initDefaultPOI();
   }
-  // Check if DealBuddy layer needs to be initialized
+  // Check if DealBuddy layer needs to be initialized or updated
   var savedLayerVer = parseInt(localStorage.getItem("atl_savedLayerVersion")) || 0;
   if (savedLayerVer < SAVED_LAYER_VERSION) {
-    // Only add DealBuddy if it doesn't already exist
-    var hasDealBuddy = savedLayers.some(function(l) { return l.name === "DealBuddy"; });
-    if (!hasDealBuddy) {
-      initDefaultSavedLayers();
+    // Remove existing DealBuddy to re-create with updated data (e.g. new opex tabs)
+    var dbIdx = savedLayers.findIndex(function(l) { return l.name === "DealBuddy"; });
+    if (dbIdx !== -1) {
+      savedLayers[dbIdx].mapMarkers.forEach(function(m) { map.removeLayer(m); });
+      savedLayers.splice(dbIdx, 1);
     }
+    initDefaultSavedLayers();
     localStorage.setItem("atl_savedLayerVersion", SAVED_LAYER_VERSION);
+  }
+  // ── SALES COMPS LAYER (auto-injected from OM extraction) ──
+  var hasSalesComps = savedLayers.some(function(l) { return l.name === "Sales Comps"; });
+  if (!hasSalesComps) {
+    var scLayer = createLayer("Sales Comps");
+    scLayer.icon = "💰";
+    scLayer.color = "#ef4444";
+    var salesComps = [
+      {name:"Elme Druid Hills",address:"2696 N Druid Hills Road NE, Atlanta, GA",lat:33.8234,lng:-84.3159,fields:[{label:"Vintage",value:"1987"},{label:"Units",value:"500"},{label:"Avg SF",value:"953"},{label:"Avg Rent",value:"$1,624"},{label:"Sale Price",value:"$108,000,000"},{label:"$/Unit",value:"$216,000"},{label:"$/SF",value:"$266"},{label:"Date Sold",value:"9/29/2023"}]},
+      {name:"Cortland Woodlands",address:"2850 Delk Road SE, Marietta, GA",lat:33.8481,lng:-84.4165,fields:[{label:"Vintage",value:"1981"},{label:"Units",value:"484"},{label:"Avg SF",value:"1,213"},{label:"Avg Rent",value:"$1,537"},{label:"Sale Price",value:"$95,750,000"},{label:"$/Unit",value:"$197,831"},{label:"$/SF",value:"$163"},{label:"Date Sold",value:"12/6/2024"}]},
+      {name:"Avenues of Kennesaw E&W",address:"3900 George Busbee Pkwy, Kennesaw, GA",lat:33.9463,lng:-84.5805,fields:[{label:"Vintage",value:"1989"},{label:"Units",value:"524"},{label:"Avg SF",value:"1,004"},{label:"Avg Rent",value:"$1,494"},{label:"Sale Price",value:"$101,250,000"},{label:"$/Unit",value:"$193,225"},{label:"$/SF",value:"$201"},{label:"Date Sold",value:"3/26/2025"}]},
+      {name:"Grande Club",address:"3740 Club Drive, Duluth, GA",lat:33.9755,lng:-84.3112,fields:[{label:"Vintage",value:"1998"},{label:"Units",value:"264"},{label:"Avg SF",value:"1,003"},{label:"Avg Rent",value:"$1,523"},{label:"Sale Price",value:"$49,000,000"},{label:"$/Unit",value:"$185,606"},{label:"$/SF",value:"$185"},{label:"Date Sold",value:"3/25/2025"}]},
+      {name:"Grove Parkview",address:"1900 Glenn Club Drive, Stone Mountain, GA",lat:33.8128,lng:-84.1373,fields:[{label:"Vintage",value:"1989"},{label:"Units",value:"268"},{label:"Avg SF",value:"859"},{label:"Avg Rent",value:"$1,597"},{label:"Sale Price",value:"$49,100,000"},{label:"$/Unit",value:"$183,209"},{label:"$/SF",value:"$183"},{label:"Date Sold",value:"3/6/2025"}]},
+      {name:"Spalding Bridge Apartments",address:"7445 Trowbridge Road, Sandy Springs, GA",lat:33.9352,lng:-84.3764,fields:[{label:"Vintage",value:"1983"},{label:"Units",value:"192"},{label:"Avg SF",value:"1,178"},{label:"Avg Rent",value:"$1,690"},{label:"Sale Price",value:"$35,100,000"},{label:"$/Unit",value:"$182,813"},{label:"$/SF",value:"$133"},{label:"Date Sold",value:"7/31/2024"}]},
+      {name:"Junction at Vinings",address:"2101 Paces Ferry Road SE, Smyrna, GA",lat:33.8661,lng:-84.4186,fields:[{label:"Vintage",value:"1983"},{label:"Units",value:"360"},{label:"Avg SF",value:"1,054"},{label:"Avg Rent",value:"$1,473"},{label:"Sale Price",value:"$65,700,000"},{label:"$/Unit",value:"$182,500"},{label:"$/SF",value:"$168"},{label:"Date Sold",value:"8/29/2024"}]},
+      {name:"Aqua at Sandy Springs",address:"100 Greyfield Lane, Sandy Springs, GA",lat:33.9386,lng:-84.3876,fields:[{label:"Vintage",value:"1992"},{label:"Units",value:"219"},{label:"Avg SF",value:"1,169"},{label:"Avg Rent",value:"$1,620"},{label:"Sale Price",value:"$36,400,000"},{label:"$/Unit",value:"$166,210"},{label:"$/SF",value:"$219"},{label:"Date Sold",value:"9/18/2024"}]},
+      {name:"The BelAire Apartment Homes",address:"825 Powder Springs St, Marietta, GA",lat:33.9478,lng:-84.4324,fields:[{label:"Vintage",value:"1987"},{label:"Units",value:"188"},{label:"Avg SF",value:"1,018"},{label:"Avg Rent",value:"$1,475"},{label:"Sale Price",value:"$30,100,000"},{label:"$/Unit",value:"$160,106"},{label:"$/SF",value:"$163"},{label:"Date Sold",value:"9/27/2024"}]},
+      {name:"Avana Cityview",address:"1650 Barnes Mill Road, Marietta, GA",lat:33.9703,lng:-84.5031,fields:[{label:"Vintage",value:"1986"},{label:"Units",value:"320"},{label:"Avg SF",value:"917"},{label:"Avg Rent",value:"$1,319"},{label:"Sale Price",value:"$51,000,000"},{label:"$/Unit",value:"$159,375"},{label:"$/SF",value:"$174"},{label:"Date Sold",value:"8/22/2024"}]},
+      {name:"Rosemont Peachtree Corners",address:"3655 Westchase Village Lane, Peachtree Corners, GA",lat:33.9729,lng:-84.3017,fields:[{label:"Vintage",value:"1983"},{label:"Units",value:"440"},{label:"Avg SF",value:"867"},{label:"Avg Rent",value:"$1,260"},{label:"Sale Price",value:"$65,500,000"},{label:"$/Unit",value:"$148,863"},{label:"$/SF",value:"$172"},{label:"Date Sold",value:"2/28/2025"}]},
+      {name:"The Springs at Peachtree Corners",address:"3500 Peachtree Corners Circle, Peachtree Corners, GA",lat:33.9668,lng:-84.2930,fields:[{label:"Vintage",value:"1981"},{label:"Units",value:"508"},{label:"Avg SF",value:"889"},{label:"Avg Rent",value:"$1,342"},{label:"Sale Price",value:"$74,300,000"},{label:"$/Unit",value:"$146,257"},{label:"$/SF",value:"$170"},{label:"Date Sold",value:"9/19/2024"}]},
+      {name:"District at Duluth",address:"Duluth, GA",lat:33.9903,lng:-84.1623,fields:[{label:"Vintage",value:"2017"},{label:"Units",value:"370"},{label:"Avg SF",value:"N/A"},{label:"Avg Rent",value:"N/A"},{label:"Sale Price",value:"$96,031,700"},{label:"$/Unit",value:"$259,545"},{label:"$/SF",value:"$292"},{label:"Date Sold",value:"Sep 2024"}]},
+      {name:"Preston Pointe",address:"Duluth, GA",lat:34.0095,lng:-84.2075,fields:[{label:"Vintage",value:"2001"},{label:"Units",value:"346"},{label:"Avg SF",value:"N/A"},{label:"Avg Rent",value:"N/A"},{label:"Sale Price",value:"$88,500,000"},{label:"$/Unit",value:"$255,780"},{label:"$/SF",value:"$205"},{label:"Date Sold",value:"Aug 2024"}]},
+      {name:"Avana Portico",address:"Lawrenceville, GA",lat:33.9982,lng:-84.1874,fields:[{label:"Vintage",value:"2002"},{label:"Units",value:"440"},{label:"Avg SF",value:"N/A"},{label:"Avg Rent",value:"N/A"},{label:"Sale Price",value:"$97,000,000"},{label:"$/Unit",value:"$220,455"},{label:"$/SF",value:"$181"},{label:"Date Sold",value:"Apr 2024"}]},
+      {name:"Bridgewater",address:"Norcross, GA",lat:33.9902,lng:-84.1515,fields:[{label:"Vintage",value:"1991"},{label:"Units",value:"532"},{label:"Avg SF",value:"N/A"},{label:"Avg Rent",value:"N/A"},{label:"Sale Price",value:"$110,250,000"},{label:"$/Unit",value:"$207,237"},{label:"$/SF",value:"$154"},{label:"Date Sold",value:"Nov 2023"}]},
+      {name:"Sugarloaf Commons",address:"Duluth, GA",lat:34.0034,lng:-84.1935,fields:[{label:"Vintage",value:"2017"},{label:"Units",value:"378"},{label:"Avg SF",value:"N/A"},{label:"Avg Rent",value:"N/A"},{label:"Sale Price",value:"$100,500,000"},{label:"$/Unit",value:"$265,873"},{label:"$/SF",value:"$265"},{label:"Date Sold",value:"Sep 2023"}]},
+      {name:"Richmond Row",address:"Lawrenceville, GA",lat:34.0258,lng:-84.0856,fields:[{label:"Vintage",value:"2022"},{label:"Units",value:"344"},{label:"Avg SF",value:"N/A"},{label:"Avg Rent",value:"N/A"},{label:"Sale Price",value:"$98,000,000"},{label:"$/Unit",value:"$284,884"},{label:"$/SF",value:"$286"},{label:"Date Sold",value:"Sep 2023"}]},
+      {name:"Reserve at Sugarloaf",address:"Duluth, GA",lat:34.0142,lng:-84.1852,fields:[{label:"Vintage",value:"2001"},{label:"Units",value:"333"},{label:"Avg SF",value:"N/A"},{label:"Avg Rent",value:"N/A"},{label:"Sale Price",value:"$91,000,000"},{label:"$/Unit",value:"$273,273"},{label:"$/SF",value:"$224"},{label:"Date Sold",value:"Apr 2023"}]},
+      {name:"Merritt at Sugarloaf",address:"Duluth, GA",lat:33.9903,lng:-84.1623,fields:[{label:"Vintage",value:"1999"},{label:"Units",value:"424"},{label:"Avg SF",value:"N/A"},{label:"Avg Rent",value:"N/A"},{label:"Sale Price",value:"$108,000,000"},{label:"$/Unit",value:"$254,717"},{label:"$/SF",value:"$254"},{label:"Date Sold",value:"Nov 2022"}]}
+    ];
+    salesComps.forEach(function(sc) { addPlaceToLayer(scLayer.id, sc); });
   }
   renderSavedLayers();
 
