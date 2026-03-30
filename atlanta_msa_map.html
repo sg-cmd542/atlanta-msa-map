@@ -572,6 +572,18 @@
   }
   .fp-clear-btn:hover { background: rgba(251,113,133,0.15); }
 
+  /* Data View select */
+  #filter-panel.fp-wide { width: 90vw; max-width: calc(100vw - 40px); }
+  .fp-data-select {
+    font-family: 'IBM Plex Sans', sans-serif; font-size: 11px; font-weight: 500;
+    padding: 5px 10px; border-radius: 5px; border: 1px solid var(--border);
+    background: var(--navy-light); color: var(--text-dim); cursor: pointer;
+    outline: none; transition: all 0.15s;
+  }
+  .fp-data-select:hover { border-color: var(--accent); color: #fff; }
+  .fp-data-select.active { border-color: var(--accent); color: var(--accent); background: rgba(59,158,255,0.08); }
+  .fp-data-select option { background: var(--navy-light); color: var(--text); }
+
   /* Table */
   .fp-table-wrap { flex: 1; overflow: auto; }
   .fp-table {
@@ -755,6 +767,11 @@
     <div class="fp-filter-group">
       <button class="fp-filter-btn" id="fp-btn-submarket">Submarket <span class="fp-arrow">▾</span></button>
       <div class="fp-dropdown" id="fp-dd-submarket"></div>
+    </div>
+    <div class="fp-filter-group">
+      <select class="fp-data-select" id="fp-data-view">
+        <option value="">Data View</option>
+      </select>
     </div>
     <button class="fp-clear-btn" id="fp-clear">Clear All</button>
   </div>
@@ -3456,6 +3473,7 @@
      ══════════════════════════════════════════════════════ */
   var filterPanelOpen = false;
   var fpFilters = { sources: [], categories: [], submarkets: [] }; // selected filter values (empty = all)
+  var fpOpexView = ""; // "" = default view, or opex label like "T12", "Proforma", "T3 Expenses"
   var fpSortCol = null; // null | column key
   var fpSortDir = "orig"; // "asc" | "desc" | "orig"
   var fpAllRows = []; // master list, rebuilt on open
@@ -3513,7 +3531,7 @@
     });
     savedLayers.forEach(function(layer) {
       layer.places.forEach(function(p, pi) {
-        fpAllRows.push({
+        var row = {
           name: p.name,
           address: p.address || "",
           sourceType: "layer",
@@ -3526,8 +3544,23 @@
           lng: p.lng,
           submarket: findSubmarket(p.lat, p.lng),
           _markerRef: layer.mapMarkers[pi] || null,
-          _layerRef: layer
-        });
+          _layerRef: layer,
+          _placeRef: p
+        };
+        // Extract summary fields for DealBuddy-style places
+        if (p.fields) {
+          p.fields.forEach(function(f) {
+            var key = f.label.toLowerCase().replace(/[^a-z0-9]/g, "");
+            if (key === "vintage") row._vintage = f.value;
+            else if (key === "units") row._units = f.value;
+            else if (key === "avgsf") row._avgSF = f.value;
+            else if (key === "avgrent") row._avgRent = f.value;
+            else if (key === "psf") row._psf = f.value;
+          });
+        }
+        // Attach opex data
+        if (p.opex) row._opex = p.opex;
+        fpAllRows.push(row);
       });
     });
   }
@@ -3544,12 +3577,42 @@
     if (fpFilters.submarkets.length > 0) {
       rows = rows.filter(function(r) { return fpFilters.submarkets.indexOf(r.submarket) !== -1; });
     }
-    // Sort
+    // When summary view is active, filter to only DealBuddy-style rows with fields
+    if (fpOpexView === "__summary__") {
+      rows = rows.filter(function(r) { return r._placeRef && r._placeRef.fields && r._placeRef.fields.length > 0; });
+    }
+    // When opex view is active, filter to only rows with matching opex and extract values
+    if (fpOpexView && fpOpexView !== "__summary__") {
+      rows = rows.filter(function(r) {
+        return r._opex && r._opex.some(function(o) { return o.label === fpOpexView; });
+      });
+      rows.forEach(function(r) {
+        var entry = r._opex.find(function(o) { return o.label === fpOpexView; });
+        if (entry) {
+          r._personnel = entry.personnel || "--";
+          r._administrative = entry.administrative || "--";
+          r._marketing = entry.marketing || "--";
+          r._contractServices = entry.contractServices || "--";
+          r._repairsMaint = entry.repairsMaint || "--";
+          r._turnover = entry.turnover || "--";
+          r._utilities = entry.utilities || "--";
+          r._realEstateTaxes = entry.realEstateTaxes || "--";
+          r._insurance = entry.insurance || "--";
+          r._totalOpex = entry.totalOpex || "--";
+        }
+      });
+    }
+    // Sort (with numeric awareness for dollar values)
     if (fpSortCol && fpSortDir !== "orig") {
       var dir = fpSortDir === "asc" ? 1 : -1;
       rows.sort(function(a, b) {
-        var va = (a[fpSortCol] || "").toString().toLowerCase();
-        var vb = (b[fpSortCol] || "").toString().toLowerCase();
+        var va = (a[fpSortCol] || "").toString();
+        var vb = (b[fpSortCol] || "").toString();
+        // Try numeric comparison (strip $, commas)
+        var na = parseFloat(va.replace(/[\$,]/g, ""));
+        var nb = parseFloat(vb.replace(/[\$,]/g, ""));
+        if (!isNaN(na) && !isNaN(nb)) return (na - nb) * dir;
+        va = va.toLowerCase(); vb = vb.toLowerCase();
         if (va < vb) return -1 * dir;
         if (va > vb) return 1 * dir;
         return 0;
@@ -3558,20 +3621,52 @@
     return rows;
   }
 
-  // Columns definition
-  var fpColumns = [
-    { key: "name", label: "Name" },
-    { key: "address", label: "Address" },
-    { key: "sourceName", label: "Source" },
-    { key: "sourceType", label: "Type" },
-    { key: "submarket", label: "Submarket" }
-  ];
+  // Columns definition — dynamic based on data view
+  function fpGetColumns() {
+    if (fpOpexView === "__summary__") {
+      return [
+        { key: "name", label: "Property" },
+        { key: "_vintage", label: "Vintage" },
+        { key: "_units", label: "Units" },
+        { key: "_avgSF", label: "Avg SF" },
+        { key: "_avgRent", label: "Avg Rent" },
+        { key: "_psf", label: "PSF" },
+        { key: "submarket", label: "Submarket" }
+      ];
+    }
+    if (fpOpexView) {
+      return [
+        { key: "name", label: "Property" },
+        { key: "_vintage", label: "Vintage" },
+        { key: "_units", label: "Units" },
+        { key: "_avgRent", label: "Avg Rent" },
+        { key: "_personnel", label: "Personnel" },
+        { key: "_administrative", label: "Admin" },
+        { key: "_marketing", label: "Marketing" },
+        { key: "_contractServices", label: "Contract Svcs" },
+        { key: "_repairsMaint", label: "R&M" },
+        { key: "_turnover", label: "Turnover" },
+        { key: "_utilities", label: "Utilities" },
+        { key: "_realEstateTaxes", label: "RE Taxes" },
+        { key: "_insurance", label: "Insurance" },
+        { key: "_totalOpex", label: "Total OpEx" }
+      ];
+    }
+    return [
+      { key: "name", label: "Name" },
+      { key: "address", label: "Address" },
+      { key: "sourceName", label: "Source" },
+      { key: "sourceType", label: "Type" },
+      { key: "submarket", label: "Submarket" }
+    ];
+  }
 
   // Render table header
   function fpRenderHeader() {
+    var cols = fpGetColumns();
     var tr = document.getElementById("fp-thead-row");
     tr.innerHTML = "";
-    fpColumns.forEach(function(col) {
+    cols.forEach(function(col) {
       var th = document.createElement("th");
       th.setAttribute("data-col", col.key);
       var sortIcon = "⇅";
@@ -3583,7 +3678,6 @@
       th.innerHTML = col.label + ' <span class="sort-icon">' + sortIcon + '</span>';
       th.addEventListener("click", function() {
         if (fpSortCol === col.key) {
-          // Cycle: asc → desc → orig
           if (fpSortDir === "asc") fpSortDir = "desc";
           else if (fpSortDir === "desc") { fpSortDir = "orig"; fpSortCol = null; }
           else { fpSortDir = "asc"; }
@@ -3600,6 +3694,7 @@
 
   // Render table body
   function fpRenderTable() {
+    var cols = fpGetColumns();
     var rows = fpGetFilteredRows();
     var tbody = document.getElementById("fp-tbody");
     tbody.innerHTML = "";
@@ -3609,37 +3704,22 @@
       var tr = document.createElement("tr");
       tr.setAttribute("data-idx", idx);
 
-      // Name
-      var tdName = document.createElement("td");
-      tdName.textContent = row.name;
-      tdName.title = row.name;
-      tr.appendChild(tdName);
-
-      // Address
-      var tdAddr = document.createElement("td");
-      tdAddr.textContent = row.address;
-      tdAddr.title = row.address;
-      tr.appendChild(tdAddr);
-
-      // Source
-      var tdSrc = document.createElement("td");
-      tdSrc.innerHTML = '<span style="font-size:12px;">' + row.sourceIcon + '</span> ' + row.sourceName;
-      tdSrc.title = row.sourceName;
-      tr.appendChild(tdSrc);
-
-      // Type
-      var tdType = document.createElement("td");
-      var badge = document.createElement("span");
-      badge.className = "fp-source-badge " + row.sourceType;
-      badge.textContent = row.sourceType === "poi" ? "POI" : "Layer";
-      tdType.appendChild(badge);
-      tr.appendChild(tdType);
-
-      // Submarket
-      var tdSM = document.createElement("td");
-      tdSM.textContent = row.submarket;
-      tdSM.title = row.submarket;
-      tr.appendChild(tdSM);
+      cols.forEach(function(col) {
+        var td = document.createElement("td");
+        var val = row[col.key] != null ? row[col.key] : "";
+        if (col.key === "sourceType") {
+          var badge = document.createElement("span");
+          badge.className = "fp-source-badge " + row.sourceType;
+          badge.textContent = row.sourceType === "poi" ? "POI" : "Layer";
+          td.appendChild(badge);
+        } else if (col.key === "sourceName") {
+          td.innerHTML = '<span style="font-size:12px;">' + (row.sourceIcon||"") + '</span> ' + (row.sourceName||"");
+        } else {
+          td.textContent = val;
+        }
+        td.title = String(val);
+        tr.appendChild(td);
+      });
 
       // Click to fly to point
       tr.addEventListener("click", function() {
@@ -3647,7 +3727,6 @@
         if (row._markerRef) {
           setTimeout(function() { row._markerRef.openPopup(); }, 800);
         }
-        // Highlight row
         document.querySelectorAll(".fp-table tbody tr.fp-highlighted").forEach(function(r) { r.classList.remove("fp-highlighted"); });
         tr.classList.add("fp-highlighted");
       });
@@ -3656,7 +3735,8 @@
     });
 
     // Update count
-    document.getElementById("fp-count").textContent = rows.length + " of " + fpAllRows.length + " properties shown";
+    var totalLabel = fpOpexView ? rows.length + " properties" : rows.length + " of " + fpAllRows.length + " properties shown";
+    document.getElementById("fp-count").textContent = totalLabel;
     document.getElementById("fp-showing").textContent = "(" + rows.length + ")";
 
     // Sync map markers
@@ -3789,11 +3869,59 @@
     document.querySelectorAll(".fp-dropdown.open").forEach(function(d) { d.classList.remove("open"); });
   });
 
+  // Build Data View select options from all opex labels found
+  function fpBuildDataViewOptions() {
+    var sel = document.getElementById("fp-data-view");
+    var labels = [];
+    fpAllRows.forEach(function(r) {
+      if (r._opex) {
+        r._opex.forEach(function(o) {
+          if (labels.indexOf(o.label) === -1) labels.push(o.label);
+        });
+      }
+    });
+    // Also collect summary field labels from DealBuddy-style places
+    sel.innerHTML = '<option value="">Data View</option>';
+    // Add "Summary" option — shows Vintage/Units/Rent/PSF for DealBuddy deals
+    sel.innerHTML += '<option value="__summary__">Deal Summary</option>';
+    labels.forEach(function(l) {
+      sel.innerHTML += '<option value="' + l + '">' + l + ' Expenses</option>';
+    });
+    sel.value = fpOpexView || "";
+    sel.className = "fp-data-select" + (fpOpexView ? " active" : "");
+  }
+
+  // Data View change handler
+  document.getElementById("fp-data-view").addEventListener("change", function() {
+    var val = this.value;
+    fpOpexView = val;
+    fpSortCol = null;
+    fpSortDir = "orig";
+    // Toggle wide mode for expense views
+    var panel = document.getElementById("filter-panel");
+    if (val && val !== "__summary__") {
+      panel.classList.add("fp-wide");
+    } else if (val === "__summary__") {
+      panel.classList.add("fp-wide");
+    } else {
+      panel.classList.remove("fp-wide");
+    }
+    this.className = "fp-data-select" + (val ? " active" : "");
+    fpRenderHeader();
+    fpRenderTable();
+  });
+
   // Clear all filters
   document.getElementById("fp-clear").addEventListener("click", function() {
     fpFilters = { sources: [], categories: [], submarkets: [] };
+    fpOpexView = "";
+    fpSortCol = null;
+    fpSortDir = "orig";
+    document.getElementById("filter-panel").classList.remove("fp-wide");
     fpBuildDropdowns();
+    fpBuildDataViewOptions();
     fpUpdateFilterBtns();
+    fpRenderHeader();
     fpRenderTable();
   });
 
@@ -3805,9 +3933,12 @@
     // Build data
     fpBuildRows();
     fpFilters = { sources: [], categories: [], submarkets: [] };
+    fpOpexView = "";
     fpSortCol = null;
     fpSortDir = "orig";
+    document.getElementById("filter-panel").classList.remove("fp-wide");
     fpBuildDropdowns();
+    fpBuildDataViewOptions();
     fpUpdateFilterBtns();
     fpRenderHeader();
     fpRenderTable();
@@ -3819,6 +3950,7 @@
   function closeFilterPanel() {
     filterPanelOpen = false;
     document.getElementById("filter-panel").classList.remove("active");
+    document.getElementById("filter-panel").classList.remove("fp-wide");
     document.getElementById("btn-filter").classList.remove("active");
     // Restore all markers to their category/layer visibility
     fpAllRows.forEach(function(row) {
